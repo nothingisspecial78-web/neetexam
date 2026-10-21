@@ -5,7 +5,7 @@ export interface DailyGoalCardProps {
   targetCount?: number | undefined;
 }
 
-export function DailyGoalCard({ currentCount = 20, targetCount = 20 }: DailyGoalCardProps) {
+export function DailyGoalCard({ currentCount = 0, targetCount = 20 }: DailyGoalCardProps) {
   const isGoalAchieved = currentCount >= targetCount;
   const percentage = Math.min(100, Math.round((currentCount / targetCount) * 100));
 

@@ -4,7 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { DashboardBoundary, StudentDashboard } from "@/components/StudentDashboard";
 import { dashboardOptions } from "@/lib/dashboard-query";
-import { type Filters } from "@/lib/dashboard";
+import { type Filters, studyStreak } from "@/lib/dashboard";
+import { unitsOptions } from "@/lib/units";
+import { myQuestionsOptions } from "@/lib/my-questions";
 import { toast } from "sonner";
 import {
   Search,
@@ -13,6 +15,9 @@ import {
   ChevronUp,
   BarChart3,
   BookOpen,
+  ArrowRight,
+  Sparkles,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyRole } from "@/lib/auth.functions";
@@ -115,63 +120,120 @@ function StudentHome() {
     },
   });
 
-  // Dashboard raw stats for calculations
+  // Raw dashboard activity stats
   const dashQuery = useQuery(dashboardOptions(user.id));
 
-  // Compute Home Metrics
+  // Units stats with real progress & accuracy
+  const unitsQuery = useQuery(unitsOptions(user.id));
+
+  // Questions query to see drafts
+  const myQuestionsQuery = useQuery(myQuestionsOptions(user.id));
+
+  // Compute live connected metrics from database
   const metrics = useMemo(() => {
-    const raw = dashQuery.data;
-    if (!raw) {
+    const rawDash = dashQuery.data;
+    const unitsList = unitsQuery.data?.stats ?? [];
+    const questionsList = myQuestionsQuery.data ?? [];
+
+    // 1. Choose Unit to continue:
+    // Prefer unit with status === "progress", then "new", then first unit
+    const inProgressUnit = unitsList.find((u) => u.status === "progress");
+    const activeUnit = inProgressUnit || unitsList.find((u) => u.status === "new") || unitsList[0];
+
+    const hasUnits = !!activeUnit;
+    const unitName = activeUnit?.name || "ابدأ بإنشاء أو رفع وحدتك الأولى";
+    const unitId = activeUnit?.id || null;
+    const progressPercent = activeUnit ? activeUnit.progress : 0;
+    const levelText = !activeUnit
+      ? "بداية الرحلة"
+      : progressPercent < 35
+      ? "مستوى مبتدئ"
+      : progressPercent < 75
+      ? "مستوى متوسط"
+      : "مستوى متقدم";
+
+    // 2. Real All Dates for Streak & Calendar
+    const now = new Date();
+    const allDates = [
+      ...(rawDash?.answers || []).map((a) => a.created_at),
+      ...(rawDash?.matches || []).map((m) => m.created_at),
+    ];
+    const streakDays = studyStreak(allDates, now);
+
+    // 3. 7 Days Week Strip (RTL: Saturday -> Friday)
+    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+    const daysSinceSaturday = (dayOfWeek + 1) % 7;
+    const arabicLabels = ["س", "ح", "ن", "ث", "ر", "خ", "ج"];
+    const activeDateStrings = new Set(allDates.map((d) => d.slice(0, 10)));
+    const todayIso = now.toISOString().slice(0, 10);
+
+    const weekDays = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(now.getDate() - daysSinceSaturday + i);
+      const dateIso = d.toISOString().slice(0, 10);
+      const isToday = dateIso === todayIso;
+      const completed = activeDateStrings.has(dateIso);
       return {
-        unitName: "العصر الجاهلي وصناع المعلقات",
-        unitId: null,
-        progressPercent: 85,
-        todayCount: 20,
-        mistakesCount: 6,
-        studyTimeStr: "2h 42m",
-        streakDays: 2,
-        credits: 100,
+        dayNum: d.getDate(),
+        label: arabicLabels[i] || "س",
+        completed,
+        isToday,
       };
-    }
+    });
 
-    // Last practiced unit or first available unit
-    const units = raw.units || [];
-    const firstUnit = units[0];
-    const unitName = firstUnit?.name || "العصر الجاهلي وصناع المعلقات";
-    const unitId = firstUnit?.id || null;
-
-    // Today answers
+    // 4. Today answers count for Daily Goal
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
-    const todayAnswers = (raw.answers || []).filter(
+    const todayCount = (rawDash?.answers || []).filter(
       (a) => new Date(a.created_at).getTime() >= todayMidnight.getTime()
-    );
-    const todayCount = todayAnswers.length > 0 ? todayAnswers.length : 20;
+    ).length;
 
-    // Mistakes count
-    const mistakesCount = (raw.answers || []).filter((a) => !a.is_correct).length || 6;
+    // 5. Mistakes count (unique questions answered incorrectly)
+    const mistakesCount = (rawDash?.answers || []).filter((a) => !a.is_correct).length;
 
-    // Total Study Time
+    // 6. Total Study Time
     const totalSecs =
-      (raw.runs || []).reduce((acc, r) => acc + (r.duration_s || 0), 0) +
-      Math.round((raw.answers || []).reduce((acc, a) => acc + (a.time_ms || 0), 0) / 1000);
+      (rawDash?.runs || []).reduce((acc, r) => acc + (r.duration_s || 0), 0) +
+      Math.round((rawDash?.answers || []).reduce((acc, a) => acc + (a.time_ms || 0), 0) / 1000);
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const studyTimeStr = totalSecs > 0 ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : "0m";
 
-    const effectiveSecs = totalSecs > 0 ? totalSecs : 9720; // fallback to 2h 42m
-    const hrs = Math.floor(effectiveSecs / 3600);
-    const mins = Math.floor((effectiveSecs % 3600) / 60);
-    const studyTimeStr = `${hrs}h ${mins}m`;
+    // 7. Ready Drafts
+    const readyDrafts = questionsList.filter((q) => q.status === "draft");
+
+    // 8. Arena Wins
+    const arenaWins = (rawDash?.matches || []).filter((m) => m.winner_id === user.id).length;
 
     return {
+      hasUnits,
       unitName,
       unitId,
-      progressPercent: 85,
+      progressPercent,
+      levelText,
+      streakDays,
+      weekDays,
       todayCount,
       mistakesCount,
       studyTimeStr,
-      streakDays: 2,
-      credits: profile.data?.credits ?? raw.arena?.credits ?? 100,
+      readyDraftsCount: readyDrafts.length,
+      arenaWins,
+      totalUnits: unitsList.length,
+      totalTests: rawDash?.runs?.length || 0,
+      credits: profile.data?.credits ?? rawDash?.arena?.credits ?? 100,
     };
-  }, [dashQuery.data, profile.data]);
+  }, [dashQuery.data, unitsQuery.data, myQuestionsQuery.data, profile.data, user.id]);
+
+  // Live search filtering for units
+  const filteredUnits = useMemo(() => {
+    if (!searchQuery.trim() || !unitsQuery.data?.stats) return [];
+    const query = searchQuery.trim().toLowerCase();
+    return unitsQuery.data.stats.filter(
+      (u) =>
+        u.name.toLowerCase().includes(query) ||
+        (u.owner_name && u.owner_name.toLowerCase().includes(query))
+    );
+  }, [searchQuery, unitsQuery.data?.stats]);
 
   useEffect(() => {
     if (role.data?.role === "admin") navigate({ to: "/admin", replace: true });
@@ -197,7 +259,10 @@ function StudentHome() {
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (searchQuery.trim()) {
+    if (filteredUnits.length === 1 && filteredUnits[0]) {
+      navigate({ to: "/app/units/$unitId", params: { unitId: filteredUnits[0].id } });
+      setSearchQuery("");
+    } else {
       navigate({ to: "/app/units" });
     }
   }
@@ -257,36 +322,90 @@ function StudentHome() {
                   تعلم العربية
                 </h1>
                 <p className="text-sm sm:text-base font-bold text-[#2DD4A8]">
-                  بسهولة و متعة 🌿
+                  بسهولة و متعة 🍃
                 </p>
               </div>
 
               {/* Calligraphy Logo Badge & Credits */}
               <div className="flex flex-col items-end gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#F5B942]/30 bg-[#F5B942]/10 text-[#F5B942] font-bold text-xs shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: "/app/arena" })}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#F5B942]/30 bg-[#F5B942]/10 text-[#F5B942] font-bold text-xs shadow-sm hover:border-[#F5B942]/60 hover:bg-[#F5B942]/15 transition-all cursor-pointer"
+                >
                   <Coins className="h-4 w-4 text-[#F5B942]" />
                   <span>{metrics.credits} نقطة</span>
-                </div>
+                </button>
               </div>
             </div>
 
-            {/* ── 2. Search Bar ── */}
-            <form onSubmit={handleSearchSubmit} className="relative w-full">
-              <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#8FA3A0] pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث عن درس أو وحدة أو سؤال..."
-                className="h-13 w-full rounded-[20px] border border-[#1D3139] bg-[#162730] pr-12 pl-4 text-sm font-medium text-white placeholder-[#8FA3A0] focus:border-[#14B58C] focus:outline-none focus:ring-2 focus:ring-[#14B58C]/20 transition-all shadow-sm"
-              />
-            </form>
+            {/* ── 2. Search Bar with Live Filter ── */}
+            <div className="relative w-full">
+              <form onSubmit={handleSearchSubmit} className="relative w-full">
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#8FA3A0] pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="ابحث عن درس أو وحدة دراسية..."
+                  className="h-13 w-full rounded-[20px] border border-[#1D3139] bg-[#162730] pr-12 pl-10 text-sm font-medium text-white placeholder-[#8FA3A0] focus:border-[#14B58C] focus:outline-none focus:ring-2 focus:ring-[#14B58C]/20 transition-all shadow-sm"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8FA3A0] hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </form>
 
-            {/* ── 3. Hero "Continue" Card ── */}
+              {/* Live search results overlay */}
+              {searchQuery.trim().length > 0 && (
+                <div className="absolute top-full mt-2 w-full z-40 rounded-2xl border border-[#1D3139] bg-[#111E24] p-3 shadow-2xl space-y-2 animate-scale-in">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#8FA3A0] px-2 py-1">
+                    <span>نتائج البحث ({filteredUnits.length})</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate({ to: "/app/units" })}
+                      className="text-[#2DD4A8] hover:underline"
+                    >
+                      عرض في الوحدات
+                    </button>
+                  </div>
+                  {filteredUnits.length > 0 ? (
+                    filteredUnits.slice(0, 4).map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => {
+                          navigate({ to: "/app/units/$unitId", params: { unitId: u.id } });
+                          setSearchQuery("");
+                        }}
+                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-[#162730] hover:bg-[#1D3139] transition-colors text-start"
+                      >
+                        <div>
+                          <p className="font-bold text-sm text-white">{u.name}</p>
+                          <p className="text-xs text-[#8FA3A0]">{u.total} سؤال · إنجاز {u.progress}%</p>
+                        </div>
+                        <span className="text-xs font-semibold text-[#2DD4A8]">تدريب ←</span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-xs text-[#8FA3A0] text-center py-3">
+                      لا توجد وحدات مطابقة للبحث
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── 3. Hero "Continue" Card (Connected to Real Unit) ── */}
             <HeroContinueCard
               unitName={metrics.unitName}
               progressPercent={metrics.progressPercent}
-              levelText="مستوى متقدم"
+              levelText={metrics.levelText}
               onContinue={() => {
                 if (metrics.unitId) {
                   navigate({ to: "/app/units/$unitId", params: { unitId: metrics.unitId } });
@@ -296,18 +415,24 @@ function StudentHome() {
               }}
             />
 
-            {/* ── 4. Streak and Weekly Strip Card ── */}
-            <StreakWeekCard streakDays={metrics.streakDays} />
+            {/* ── 4. Streak and Weekly Strip Card (Connected to Real Activity Dates) ── */}
+            <StreakWeekCard
+              streakDays={metrics.streakDays}
+              days={metrics.weekDays}
+            />
 
-            {/* ── 5. Daily Goal Card ── */}
-            <DailyGoalCard currentCount={metrics.todayCount} targetCount={20} />
+            {/* ── 5. Daily Goal Card (Connected to Real Today Answers) ── */}
+            <DailyGoalCard
+              currentCount={metrics.todayCount}
+              targetCount={20}
+            />
 
             {/* ── 6. Feature Tiles (2-Column Grid matching reference) ── */}
             <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
               <FeatureTile
                 id="feature-smart-exams"
                 title="اختبارات ذكية"
-                description="اختبر معلوماتك في الأدب العربي بدقة"
+                description={metrics.totalTests > 0 ? `أجريت ${metrics.totalTests} اختباراً · تدريب شامل` : "اختبارات شاملة وتجريبية للمنهج"}
                 imageSrc="/illustrations/quiz_bubble.jpg"
                 imageAlt="اختبارات ذكية"
                 accentColor="blue"
@@ -315,9 +440,9 @@ function StudentHome() {
               />
 
               <FeatureTile
-                id="feature-listen-learn"
+                id="feature-units"
                 title="الوحدات والدروس"
-                description="تصفّح وحدات المنهج وأسئلتها المصنفة"
+                description={metrics.totalUnits > 0 ? `${metrics.totalUnits} وحدات دراسية متاحة للتعلّم` : "استكشف الفصول والموضوعات المصنفة"}
                 imageSrc="/illustrations/headphones.jpg"
                 imageAlt="الوحدات والدروس"
                 accentColor="purple"
@@ -327,31 +452,32 @@ function StudentHome() {
               <FeatureTile
                 id="feature-arena"
                 title="ساحة المنافسة"
-                description="مبارزة مباشرة لمدة دقيقة مع زملائك"
-                imageSrc="/illustrations/flame.jpg"
+                description={metrics.arenaWins > 0 ? `${metrics.arenaWins} انتصارات مسجلة · تحدٍّ مباشر` : "مبارزة حية لمدة 60 ثانية مع زملائك"}
+                imageSrc="/illustrations/trophy.jpg"
                 imageAlt="ساحة المنافسة"
-                accentColor="emerald"
-                badgeText={invites.data && invites.data > 0 ? "تحدٍّ وارد!" : undefined}
+                accentColor="gold"
+                badgeText={invites.data && invites.data > 0 ? `${invites.data} تحدٍّ وارد!` : undefined}
                 onClick={() => navigate({ to: "/app/arena" })}
               />
 
               <FeatureTile
                 id="feature-upload"
                 title="رفع وتوليد الأسئلة"
-                description="أضف ملفات PDF وأنشئ أسئلتك بسهولة"
-                imageSrc="/illustrations/trophy.jpg"
-                imageAlt="رفع الأسئلة"
-                accentColor="gold"
-                onClick={() => navigate({ to: "/app/upload" })}
+                description={metrics.readyDraftsCount > 0 ? `${metrics.readyDraftsCount} أسئلة بانتظار النشر` : "أضف ملفات PDF أو نصوص لإنشاء الأسئلة"}
+                imageSrc="/illustrations/hero_student.jpg"
+                imageAlt="رفع وتوليد الأسئلة"
+                accentColor="emerald"
+                badgeText={metrics.readyDraftsCount > 0 ? `${metrics.readyDraftsCount} مسودة` : undefined}
+                onClick={() => navigate({ to: metrics.readyDraftsCount > 0 ? "/app/units" : "/app/upload" })}
               />
             </div>
 
-            {/* ── 7. Stat Cards ── */}
+            {/* ── 7. Stat Cards (Connected to Real Mistakes & Time) ── */}
             <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
               <StatCard
                 id="stat-mistakes"
                 label="مراجعة الأخطاء"
-                value={`${metrics.mistakesCount} عناصر`}
+                value={`${metrics.mistakesCount} ${metrics.mistakesCount === 1 ? "عنصر" : "عناصر"}`}
                 imageSrc="/illustrations/pencil.jpg"
                 imageAlt="قلم مراجعة الأخطاء"
                 onClick={() => navigate({ to: "/app/units" })}
@@ -383,43 +509,45 @@ function StudentHome() {
                       الرسوم والتقارير البيانية المفصلة
                     </h3>
                     <p className="text-xs text-[#8FA3A0]">
-                      تحليل الدقة، وتطور الرصيد، ونقاط القوة والضعف
+                      تحليل التقدم، والموضوعات الضعيفة، ونشاط الأيام
                     </p>
                   </div>
                 </div>
-                {showDetailedCharts ? (
-                  <ChevronUp className="h-5 w-5 text-[#8FA3A0]" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-[#8FA3A0]" />
-                )}
+
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#1D3139] bg-[#162730] text-[#8FA3A0] group-hover:text-white transition-colors">
+                  {showDetailedCharts ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </div>
               </button>
 
               {showDetailedCharts && (
-                <div className="pt-3 border-t border-[#1D3139] animate-in fade-in-50 duration-200">
-                  <DashboardBoundary>
-                    <Suspense
-                      fallback={
-                        <div className="space-y-4">
-                          {[1, 2].map((i) => (
-                            <div key={i} className="h-32 animate-pulse rounded-2xl bg-[#162730]" />
-                          ))}
-                        </div>
-                      }
-                    >
+                <div className="pt-3 border-t border-[#1D3139] animate-fade-in">
+                  <Suspense
+                    fallback={
+                      <div className="p-8 text-center text-xs text-[#8FA3A0]">
+                        جارٍ تحميل الرسوم البيانية...
+                      </div>
+                    }
+                  >
+                    <DashboardBoundary>
                       <StudentDashboard
                         userId={user.id}
                         filters={filters}
-                        onFilters={(next) => navigate({ to: "/app", search: next, replace: true })}
+                        onFilters={(f: Filters) =>
+                          navigate({
+                            to: "/app",
+                            search: { ...filters, ...f },
+                          })
+                        }
                       />
-                    </Suspense>
-                  </DashboardBoundary>
+                    </DashboardBoundary>
+                  </Suspense>
                 </div>
               )}
             </div>
 
-            {/* ── 9. Account Settings Link ── */}
-            <div className="pt-2 text-center">
-              <DeleteAccount />
+            {/* ── 9. Danger Zone: Account Deletion ── */}
+            <div className="pt-2">
+              <DeleteAccount variant="card" />
             </div>
           </>
         )}
