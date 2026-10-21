@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Swords, Trophy, Coins, Radar, Crown, Users, ChevronRight, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import { challengeFriend, respondChallenge, cancelChallenge } from "@/lib/arena.functions";
+import { challengeFriend, respondChallenge, cancelChallenge, findOpponent as findOpponentFn } from "@/lib/arena.functions";
 import { AppHeader } from "@/components/AppHeader";
 import { ArenaMatch } from "@/components/ArenaMatch";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ function Arena() {
   const challengeFn = useServerFn(challengeFriend);
   const respondFn = useServerFn(respondChallenge);
   const cancelFn = useServerFn(cancelChallenge);
+  const findOpponentServer = useServerFn(findOpponentFn);
   const [viewId, setViewId] = useState<string | null>(null);
   const [waitFrom, setWaitFrom] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
@@ -126,10 +127,8 @@ function Arena() {
     if (!waiting) return;
     const t = setInterval(() => {
       setNow(Date.now());
-      supabase.rpc("find_opponent").then(({ error }) => {
-        if (!error) void cur.refetch();
-      });
-    }, 2000);
+      void cur.refetch();
+    }, 1500);
     return () => clearInterval(t);
   }, [waiting]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -144,6 +143,15 @@ function Arena() {
     setViewId(null);
     setWaitFrom(Date.now());
     setNow(Date.now());
+    try {
+      const res = await findOpponentServer();
+      if (res?.matchId) {
+        await cur.refetch();
+        return;
+      }
+    } catch {
+      // Fallback to RPC if server function fails
+    }
     await call(supabase.rpc("find_opponent"));
   }
 

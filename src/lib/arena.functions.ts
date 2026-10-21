@@ -32,6 +32,155 @@ export const finishMatch = createServerFn({ method: "POST" })
     return { done: true };
   });
 
+// Helper to pick randomly from all users' active questions
+async function pickRandomQuestions(supabaseAdmin: any, count = 50): Promise<string[]> {
+  // 1. Fetch all active questions across all users
+  let { data: questions } = await supabaseAdmin
+    .from("questions")
+    .select("id")
+    .eq("status", "active");
+
+  if (!questions || questions.length === 0) {
+    const all = await supabaseAdmin.from("questions").select("id");
+    questions = all.data ?? [];
+  }
+
+  if (!questions || questions.length === 0) {
+    throw new Error("لا توجد أسئلة متاحة للمبارزة حالياً، يرجى نشر أسئلة أولاً");
+  }
+
+  // 2. Fisher-Yates shuffle across the entire pool
+  const shuffled = [...questions];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled.slice(0, count).map((q) => q.id);
+}
+
+// Joins an existing waiting match or creates a new random match with randomized questions from all users
+export const findOpponent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch user display name
+    const { data: pMe } = await supabaseAdmin
+      .from("profiles")
+      .select("display_name")
+      .eq("id", userId)
+      .single();
+    const myName = pMe?.display_name ?? "متحدٍ";
+
+    // 2. Check if user already has an active ongoing match that has not ended
+    const nowIso = new Date().toISOString();
+    const { data: ongoing } = await supabaseAdmin
+      .from("matches")
+      .select("id, ends_at")
+      .or(`player_a.eq.${userId},player_b.eq.${userId}`)
+      .eq("status", "active")
+      .gt("ends_at", nowIso)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (ongoing) {
+      return { matchId: ongoing.id };
+    }
+
+    // Clean up expired waiting matches older than 45 seconds
+    await supabaseAdmin
+      .from("matches")
+      .update({ status: "cancelled" })
+      .eq("status", "waiting")
+      .lt("created_at", new Date(Date.now() - 45_000).toISOString());
+
+    // Clean up finished/expired active matches
+    await supabaseAdmin
+      .from("matches")
+      .update({ status: "cancelled" })
+      .eq("status", "active")
+      .lt("ends_at", new Date(Date.now() - 30_000).toISOString());
+
+    // 3. Look for an open waiting match created by another player
+    const { data: waiting } = await supabaseAdmin
+      .from("matches")
+      .select("id, question_ids")
+      .eq("kind", "random")
+      .eq("status", "waiting")
+      .neq("player_a", userId)
+      .gt("created_at", new Date(Date.now() - 45_000).toISOString())
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (waiting) {
+      // Opponent found! Pair into this match
+      const startsAt = new Date(Date.now() + 3000);
+      const endsAt = new Date(Date.now() + 3000 + 60_000);
+      await supabaseAdmin
+        .from("matches")
+        .update({
+          player_b: userId,
+          b_name: myName,
+          status: "active",
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+        })
+        .eq("id", waiting.id);
+
+      return { matchId: waiting.id };
+    }
+
+    // 4. Check if current user already has an active waiting match from the last 30 seconds
+    const { data: myWaiting } = await supabaseAdmin
+      .from("matches")
+      .select("id")
+      .eq("kind", "random")
+      .eq("status", "waiting")
+      .eq("player_a", userId)
+      .gt("created_at", new Date(Date.now() - 30_000).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (myWaiting) {
+      return { matchId: myWaiting.id };
+    }
+
+    // 5. Create new waiting match: select randomly from ALL users' active questions
+    const qIds = await pickRandomQuestions(supabaseAdmin, 50);
+
+    // Cancel any previous waiting matches by this user
+    await supabaseAdmin
+      .from("matches")
+      .update({ status: "cancelled" })
+      .eq("status", "waiting")
+      .eq("player_a", userId);
+
+    const { data: newMatch, error } = await supabaseAdmin
+      .from("matches")
+      .insert({
+        kind: "random",
+        status: "waiting",
+        player_a: userId,
+        a_name: myName,
+        duration_s: 60,
+        question_ids: qIds,
+      })
+      .select("id")
+      .single();
+
+    if (error || !newMatch) {
+      console.error("findOpponent insert error:", error);
+      throw new Error("تعذّر بدء البحث عن منافس");
+    }
+
+    return { matchId: newMatch.id };
+  });
+
 // Challenges a friend to a head-to-head competition match.
 export const challengeFriend = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -53,25 +202,8 @@ export const challengeFriend = createServerFn({ method: "POST" })
 
     if (!pB.data) throw new Error("المستخدم غير موجود");
 
-    // 2. Fetch questions: active first, fallback to all questions
-    let { data: questions } = await supabaseAdmin
-      .from("questions")
-      .select("id")
-      .eq("status", "active")
-      .limit(20);
-
-    if (!questions || questions.length === 0) {
-      const all = await supabaseAdmin.from("questions").select("id").limit(20);
-      questions = all.data ?? [];
-    }
-
-    if (!questions || questions.length === 0) {
-      throw new Error("لا توجد أسئلة متاحة للمبارزة حالياً، يرجى نشر أسئلة أولاً");
-    }
-
-    // Shuffle questions
-    const shuffled = [...questions].sort(() => Math.random() - 0.5);
-    const qIds = shuffled.map((q) => q.id);
+    // 2. Fetch questions: randomly sampled from all users' active questions
+    const qIds = await pickRandomQuestions(supabaseAdmin, 50);
 
     // 3. Cancel any previous pending challenges involving this user
     await supabaseAdmin

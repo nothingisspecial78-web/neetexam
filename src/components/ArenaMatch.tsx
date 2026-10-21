@@ -21,7 +21,23 @@ import { notifyLiveSync } from "@/lib/live-sync";
 import { Button } from "@/components/ui/button";
 import { ARABIC_LABELS } from "@/lib/parse-questions";
 
-type MatchQ = { index: number; question: string; options: string[] };
+type MatchQ = {
+  index: number;
+  question: string;
+  question_text?: string;
+  options: string[];
+};
+
+function normalizeMatchQ(raw: any): MatchQ {
+  const text = (raw?.question_text || raw?.question || "").trim();
+  return {
+    index: raw?.index ?? 0,
+    question: text,
+    question_text: text,
+    options: Array.isArray(raw?.options) ? raw.options : [],
+  };
+}
+
 type Picked = { choice: number; correctIndex: number | null; ok: boolean };
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -90,7 +106,7 @@ export function ArenaMatch({
     if (phase !== "play" || q || outOfQuestions || picked) return;
     supabase.rpc("match_question", { _id: id }).then(({ data, error }) => {
       if (error) return void toast.error(error.message);
-      if (data) setQ(data as unknown as MatchQ);
+      if (data) setQ(normalizeMatchQ(data));
       else setOut(true);
     });
   }, [phase, q, outOfQuestions, picked, id]);
@@ -128,13 +144,13 @@ export function ArenaMatch({
       setQ(null); // reload the current question
       return;
     }
-    const r = data as unknown as { correct: boolean; correct_index: number | null; next: MatchQ | null };
+    const r = data as unknown as { correct: boolean; correct_index: number | null; next: any | null };
     setPicked({ choice, correctIndex: r.correct_index, ok: r.correct });
     setMine((s) => s && (r.correct ? { ...s, correct: s.correct + 1 } : { ...s, wrong: s.wrong + 1 }));
     setTimeout(
       () => {
         setPicked(null);
-        if (r.next) setQ(r.next);
+        if (r.next) setQ(normalizeMatchQ(r.next));
         else {
           setQ(null);
           setOut(true);
@@ -337,7 +353,7 @@ export function ArenaMatch({
               السؤال #{q.index + 1}
             </span>
             <h2 className="font-reading text-lg sm:text-xl font-semibold leading-[1.8] text-foreground">
-              <bdi dir="auto">{q.question}</bdi>
+              <bdi dir="auto">{q.question_text || q.question}</bdi>
             </h2>
           </div>
 

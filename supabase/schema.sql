@@ -521,8 +521,20 @@ DECLARE
 BEGIN
   SELECT display_name INTO my_name FROM public.profiles WHERE id = auth.uid();
 
+  -- Cancel expired active matches
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE status = 'active' AND ends_at < now() - interval '15 seconds';
+
+  -- Cancel stale waiting matches
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE status = 'waiting' AND created_at < now() - interval '45 seconds';
+
   SELECT id INTO waiting_id FROM public.matches
-  WHERE (player_a = auth.uid() OR player_b = auth.uid()) AND status IN ('waiting', 'active');
+  WHERE (player_a = auth.uid() OR player_b = auth.uid())
+    AND status = 'active'
+    AND ends_at >= now();
   IF waiting_id IS NOT NULL THEN
     RETURN waiting_id;
   END IF;
@@ -542,13 +554,13 @@ BEGIN
     RETURN waiting_id;
   END IF;
 
-  SELECT array_agg(id) INTO q_ids FROM (
-    SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 20
+  SELECT array_agg(sub.id) INTO q_ids FROM (
+    SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 50
   ) sub;
 
   IF q_ids IS NULL OR array_length(q_ids, 1) < 1 THEN
-    SELECT array_agg(id) INTO q_ids FROM (
-      SELECT id FROM public.questions ORDER BY random() LIMIT 20
+    SELECT array_agg(sub2.id) INTO q_ids FROM (
+      SELECT id FROM public.questions ORDER BY random() LIMIT 50
     ) sub2;
   END IF;
 
@@ -573,13 +585,13 @@ BEGIN
   SELECT display_name INTO my_name FROM public.profiles WHERE id = auth.uid();
   SELECT display_name INTO friend_name FROM public.profiles WHERE id = _friend;
 
-  SELECT array_agg(id) INTO q_ids FROM (
-    SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 20
+  SELECT array_agg(sub.id) INTO q_ids FROM (
+    SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 50
   ) sub;
 
   IF q_ids IS NULL OR array_length(q_ids, 1) < 1 THEN
-    SELECT array_agg(id) INTO q_ids FROM (
-      SELECT id FROM public.questions ORDER BY random() LIMIT 20
+    SELECT array_agg(sub2.id) INTO q_ids FROM (
+      SELECT id FROM public.questions ORDER BY random() LIMIT 50
     ) sub2;
   END IF;
 
@@ -653,6 +665,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'index', curr_idx,
+    'question', q.question_text,
     'question_text', q.question_text,
     'options', q.options
   );

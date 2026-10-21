@@ -21,3 +21,5 @@ This web app not completly resposive for mobile users, so make this web app comp
 if the updations that denoted in do1.txt are completed then the completed update denoted texts only remove from do1.txt file.
 
 The whole web app must be live updation system, but live updation occure in backend, not show anything in frontent, frontent show all time normal, after the updation the result show in frontent, but the user never notice it. 
+
+can you design this web app like this professional look design, and more attractive and engagable in looking to display when they open this web app.
