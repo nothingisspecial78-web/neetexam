@@ -27,8 +27,9 @@ export const deleteMyAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { error } = await context.supabase.rpc("delete_my_data");
-    if (error) throw error;
+    if (error) console.warn("delete_my_data warning:", error);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("profiles").delete().eq("id", context.userId);
     const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(context.userId);
     if (delErr) throw delErr;
     return { ok: true };

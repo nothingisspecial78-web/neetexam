@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ChevronRight, BookOpen, Layers, Swords, Users, FileText } from "lucide-react";
 import { SignOutButton } from "./SignOutButton";
+import { DeleteAccount } from "./DeleteAccount";
 import { usePresence } from "@/lib/presence";
 
 export function AppHeader({ title, back }: { title?: string; back?: boolean }) {
@@ -72,6 +73,7 @@ export function AppHeader({ title, back }: { title?: string; back?: boolean }) {
       </nav>
 
       <div className="flex items-center gap-2">
+        <DeleteAccount variant="headerButton" />
         <SignOutButton />
       </div>
     </header>
