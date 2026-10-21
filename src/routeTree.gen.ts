@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CheckEmailRouteImport } from './routes/check-email'
+import { Route as DesignRouteImport } from './routes/design'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
@@ -42,6 +43,11 @@ const AuthRoute = AuthRouteImport.update({
 const CheckEmailRoute = CheckEmailRouteImport.update({
   id: '/check-email',
   path: '/check-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesignRoute = DesignRouteImport.update({
+  id: '/design',
+  path: '/design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/check-email': typeof CheckEmailRoute
+  '/design': typeof DesignRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin': typeof AuthenticatedAdminRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/check-email': typeof CheckEmailRoute
+  '/design': typeof DesignRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin': typeof AuthenticatedAdminRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/check-email': typeof CheckEmailRoute
+  '/design': typeof DesignRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/check-email'
+    | '/design'
     | '/forgot-password'
     | '/reset-password'
     | '/admin'
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/check-email'
+    | '/design'
     | '/forgot-password'
     | '/reset-password'
     | '/admin'
@@ -192,6 +203,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/check-email'
+    | '/design'
     | '/forgot-password'
     | '/reset-password'
     | '/_authenticated/admin'
@@ -210,6 +222,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   CheckEmailRoute: typeof CheckEmailRoute
+  DesignRoute: typeof DesignRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
 }
@@ -242,6 +255,13 @@ declare module '@tanstack/react-router' {
       path: '/check-email'
       fullPath: '/check-email'
       preLoaderRoute: typeof CheckEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/design': {
+      id: '/design'
+      path: '/design'
+      fullPath: '/design'
+      preLoaderRoute: typeof DesignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot-password': {
@@ -356,6 +376,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   CheckEmailRoute: CheckEmailRoute,
+  DesignRoute: DesignRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
 }

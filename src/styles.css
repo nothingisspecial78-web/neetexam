@@ -65,125 +65,133 @@
 }
 
 /* ============================================================
-   DESIGN SYSTEM — Deep Emerald + Warm Gold + Warm Off-White
-   Based on 11-ui-ux-design.md spec
+   DESIGN SYSTEM — Reference Design: Dark Emerald "Glow" Theme
+   Applies to the WHOLE app (Student App & Admin Panel)
+   Dark theme is the DEFAULT
    ============================================================ */
 
-/* Light mode */
-:root {
-  /* Brand — Deep Emerald */
-  --primary-50:  #ECFDF5;
-  --primary-100: #D1FAE5;
-  --primary-300: #6EE7B7;
-  --primary-500: #10B981;
-  --primary-600: #059669;
-  --primary-700: #047857;
-  --primary-900: #064E3B;
+:root,
+:root[data-theme="dark"],
+.dark {
+  /* Backgrounds */
+  --bg:            #0A1418;   /* app background, near-black with a green tint */
+  --bg-elevated:   #0E1A1F;
+  --surface:       #111E24;   /* cards */
+  --surface-2:     #162730;   /* inner panels, inputs, search bar */
+  --border:        #1D3139;   /* 1px hairline on cards */
 
-  /* Accent — Warm Gold */
-  --accent-400: #F5C451;
-  --accent-500: #E0A82E;
-  --accent-600: #B8861A;
+  /* Brand (emerald / teal) */
+  --primary-300:   #5EEAD4;
+  --primary-400:   #2DD4A8;   /* highlights, active icons, success text */
+  --primary-500:   #14B58C;   /* main accent */
+  --primary-600:   #0E9A78;   /* buttons */
+  --primary-700:   #0B7A60;
+  --primary-900:   #06382D;   /* dark green card tint (goal/trophy card) */
 
-  /* Semantic */
-  --background:  #FBFAF7;
-  --foreground:  #1F2A24;
-  --card:        #FFFFFF;
-  --card-foreground: #1F2A24;
-  --popover:     #FFFFFF;
-  --popover-foreground: #1F2A24;
-  --primary:     #059669;
+  /* Secondary accents */
+  --gold:          #F5B942;   /* streak flame, credits, trophy, pencil */
+  --purple:        #7C5CFF;   /* listening / audio features */
+  --blue:          #3B82F6;   /* quizzes, time, info */
+  --pink:          #F472B6;   /* optional, friends/social */
+
+  /* Text */
+  --text:          #FFFFFF;   /* titles */
+  --text-soft:     #D6E2DD;   /* body */
+  --text-muted:    #8FA3A0;   /* captions, placeholders */
+
+  /* Feedback */
+  --success:       #2DD4A8;   --success-bg: rgba(45,212,168,.12);
+  --error:         #F87171;   --error-bg:   rgba(248,113,113,.12);
+  --warning:       #FBBF24;   --warning-bg: rgba(251,191,36,.12);
+
+  /* Effects */
+  --glow-primary:  0 0 24px rgba(20,181,140,.35);
+  --shadow-card:   0 8px 24px rgba(0,0,0,.35);
+  --shadow-soft:   0 12px 32px rgba(0,0,0,.45);
+  --shadow-glow:   0 0 28px rgba(20,181,140,.35);
+  --grad-primary:  linear-gradient(135deg, #0E9A78 0%, #14B58C 100%);
+  --grad-hero:     linear-gradient(160deg, #0F2A2E 0%, #0A1A1F 100%);
+  --grad-goal:     linear-gradient(135deg, #0B4A3A 0%, #0A2B2B 100%);
+  --gradient-gold: linear-gradient(135deg, #F5B942 0%, #E0A82E 100%);
+
+  /* Tailwind semantic color mappings */
+  --background:  #0A1418;
+  --foreground:  #FFFFFF;
+  --card:        #111E24;
+  --card-foreground: #FFFFFF;
+  --popover:     #111E24;
+  --popover-foreground: #FFFFFF;
+  --primary:     #14B58C;
   --primary-foreground: #FFFFFF;
-  --secondary:   #F3F1EA;
-  --secondary-foreground: #1F2A24;
-  --muted:       #F3F1EA;
-  --muted-foreground: #5E6B63;
-  --accent:      #FEF3C7;
-  --accent-foreground: #92400E;
-  --gold:        #F5C451;
-  --gold-fg:     #92400E;
-  --destructive: #DC2626;
+  --secondary:   #162730;
+  --secondary-foreground: #D6E2DD;
+  --muted:       #162730;
+  --muted-foreground: #8FA3A0;
+  --accent:      #162730;
+  --accent-foreground: #2DD4A8;
+  --gold-fg:     #F5B942;
+  --destructive: #F87171;
   --destructive-foreground: #FFFFFF;
-  --success:     #16A34A;
-  --success-bg:  #DCFCE7;
-  --warning:     #D97706;
-  --warning-bg:  #FEF3C7;
-  --border:      #E6E2D6;
-  --input:       #E6E2D6;
-  --ring:        #10B981;
-
-  /* Charts */
-  --chart-1: #059669;
-  --chart-2: #F5C451;
-  --chart-3: #10B981;
-  --chart-4: #DC2626;
-  --chart-5: #2563EB;
+  --input:       #162730;
+  --ring:        #14B58C;
 
   /* Sidebar */
-  --sidebar:                   #FBFAF7;
-  --sidebar-foreground:        #1F2A24;
-  --sidebar-primary:           #059669;
+  --sidebar:                   #0A1418;
+  --sidebar-foreground:        #FFFFFF;
+  --sidebar-primary:           #14B58C;
   --sidebar-primary-foreground:#FFFFFF;
-  --sidebar-accent:            #ECFDF5;
-  --sidebar-accent-foreground: #065F46;
-  --sidebar-border:            #E6E2D6;
-  --sidebar-ring:              #10B981;
+  --sidebar-accent:            #162730;
+  --sidebar-accent-foreground: #2DD4A8;
+  --sidebar-border:            #1D3139;
+  --sidebar-ring:              #14B58C;
 
-  /* Gradient & Shadows */
-  --gradient-hero:  linear-gradient(135deg, #064E3B 0%, #065F46 40%, #047857 100%);
-  --gradient-gold:  linear-gradient(135deg, #F5C451 0%, #E0A82E 100%);
-  --shadow-soft:    0 4px 24px -4px rgba(6,78,59,0.18), 0 1px 4px rgba(6,78,59,0.08);
-  --shadow-card:    0 1px 3px rgba(31,42,36,0.08), 0 1px 2px rgba(31,42,36,0.06);
-  --shadow-glow:    0 0 32px rgba(16,185,129,0.25);
+  /* Charts */
+  --chart-1: #14B58C;
+  --chart-2: #F5B942;
+  --chart-3: #3B82F6;
+  --chart-4: #7C5CFF;
+  --chart-5: #F87171;
 }
 
-/* Dark mode */
-.dark {
-  --background:  #0F1714;
-  --foreground:  #E8F0EB;
-  --card:        #16211C;
-  --card-foreground: #E8F0EB;
-  --popover:     #16211C;
-  --popover-foreground: #E8F0EB;
-  --primary:     #10B981;
-  --primary-foreground: #022C22;
-  --secondary:   #1C2B24;
-  --secondary-foreground: #E8F0EB;
-  --muted:       #1C2B24;
-  --muted-foreground: #9DB0A5;
-  --accent:      #1C2B1A;
-  --accent-foreground: #F5C451;
-  --gold:        #F5C451;
-  --gold-fg:     #FEF3C7;
-  --destructive: #EF4444;
+/* Optional Light Mode */
+:root[data-theme="light"] {
+  --bg:            #F6FAF8;
+  --bg-elevated:   #FFFFFF;
+  --surface:       #FFFFFF;
+  --surface-2:     #EDF4F1;
+  --border:        #D7E5DF;
+
+  --background:    #F6FAF8;
+  --foreground:    #0E1A1F;
+  --card:          #FFFFFF;
+  --card-foreground: #0E1A1F;
+  --popover:       #FFFFFF;
+  --popover-foreground: #0E1A1F;
+  --primary:       #0E9A78;
+  --primary-foreground: #FFFFFF;
+  --secondary:     #EDF4F1;
+  --secondary-foreground: #1D3139;
+  --muted:         #EDF4F1;
+  --muted-foreground: #5E726D;
+  --accent:        #E6F7F2;
+  --accent-foreground: #0E9A78;
+  --gold-fg:       #B45309;
+  --destructive:   #EF4444;
   --destructive-foreground: #FFFFFF;
-  --success:     #22C55E;
-  --success-bg:  #052E16;
-  --warning:     #F59E0B;
-  --warning-bg:  #1C1400;
-  --border:      #25352D;
-  --input:       #25352D;
-  --ring:        #10B981;
+  --input:         #EDF4F1;
+  --ring:          #0E9A78;
 
-  --chart-1: #10B981;
-  --chart-2: #F5C451;
-  --chart-3: #6EE7B7;
-  --chart-4: #EF4444;
-  --chart-5: #60A5FA;
+  --sidebar:                   #F6FAF8;
+  --sidebar-foreground:        #0E1A1F;
+  --sidebar-primary:           #0E9A78;
+  --sidebar-primary-foreground:#FFFFFF;
+  --sidebar-accent:            #EDF4F1;
+  --sidebar-accent-foreground: #0E9A78;
+  --sidebar-border:            #D7E5DF;
+  --sidebar-ring:              #0E9A78;
 
-  --sidebar:                   #0F1714;
-  --sidebar-foreground:        #E8F0EB;
-  --sidebar-primary:           #10B981;
-  --sidebar-primary-foreground:#022C22;
-  --sidebar-accent:            #1C2B24;
-  --sidebar-accent-foreground: #6EE7B7;
-  --sidebar-border:            #25352D;
-  --sidebar-ring:              #10B981;
-
-  --gradient-hero: linear-gradient(135deg, #022C22 0%, #064E3B 50%, #065F46 100%);
-  --shadow-soft:   0 4px 24px -4px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.3);
-  --shadow-card:   0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-  --shadow-glow:   0 0 32px rgba(16,185,129,0.15);
+  --shadow-card:   0 4px 16px rgba(10,20,24,.08);
+  --shadow-soft:   0 8px 24px rgba(10,20,24,.10);
 }
 
 /* ============================================================

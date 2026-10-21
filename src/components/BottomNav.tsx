@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, Layers, Swords, Users, FileText } from "lucide-react";
+import { Home, BookOpen, Swords, Users, FileText } from "lucide-react";
 
 interface BottomNavProps {
   incomingFriendsCount?: number;
@@ -14,14 +14,14 @@ export function BottomNav({ incomingFriendsCount = 0, arenaInvitesCount = 0 }: B
     {
       to: "/app",
       label: "الرئيسية",
-      icon: BookOpen,
+      icon: Home,
       badge: 0,
       active: currentPath === "/app",
     },
     {
       to: "/app/units",
       label: "الوحدات",
-      icon: Layers,
+      icon: BookOpen,
       badge: 0,
       active: currentPath.startsWith("/app/units"),
     },
@@ -51,7 +51,7 @@ export function BottomNav({ incomingFriendsCount = 0, arenaInvitesCount = 0 }: B
   return (
     <nav
       aria-label="التنقل الرئيسي"
-      className="fixed bottom-0 inset-x-0 z-40 border-t border-border/70 bg-card/95 backdrop-blur-md px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] md:hidden"
+      className="fixed bottom-0 inset-x-0 z-40 border-t border-[#1D3139] bg-[#111E24]/95 backdrop-blur-lg px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.5)] md:hidden rounded-t-[24px]"
     >
       <div className="mx-auto flex max-w-md items-center justify-around">
         {navItems.map((item) => {
@@ -60,24 +60,24 @@ export function BottomNav({ incomingFriendsCount = 0, arenaInvitesCount = 0 }: B
             <Link
               key={item.to}
               to={item.to}
-              className={`relative flex min-h-[50px] min-w-[56px] flex-col items-center justify-center rounded-xl px-2 py-1 transition-all ${
+              className={`relative flex min-h-[50px] min-w-[56px] flex-col items-center justify-center rounded-2xl px-2 py-1 transition-all ${
                 item.active
-                  ? "text-primary font-bold"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "text-[#2DD4A8] font-bold"
+                  : "text-[#8FA3A0] hover:text-[#D6E2DD]"
               }`}
             >
               <div className="relative">
                 <span
                   className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all ${
                     item.active
-                      ? "bg-primary/15 text-primary scale-110 shadow-xs"
+                      ? "bg-[#14B58C]/20 text-[#2DD4A8] scale-110 shadow-[0_0_16px_rgba(20,181,140,0.4)]"
                       : "bg-transparent"
                   }`}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-5 w-5" strokeWidth={item.active ? 2.5 : 2} />
                 </span>
                 {item.badge > 0 && (
-                  <span className="absolute -top-1 -end-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-black text-slate-900 shadow-xs animate-pulse">
+                  <span className="absolute -top-1 -end-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#F87171] px-1 text-[10px] font-black text-white shadow-xs animate-pulse">
                     {item.badge > 9 ? "9+" : item.badge}
                   </span>
                 )}
@@ -86,7 +86,7 @@ export function BottomNav({ incomingFriendsCount = 0, arenaInvitesCount = 0 }: B
                 {item.label}
               </span>
               {item.active && (
-                <span className="absolute bottom-0.5 h-1 w-5 rounded-full bg-primary" />
+                <span className="absolute bottom-0 h-1 w-5 rounded-full bg-[#2DD4A8] shadow-[0_0_8px_rgba(45,212,168,0.7)]" />
               )}
             </Link>
           );
