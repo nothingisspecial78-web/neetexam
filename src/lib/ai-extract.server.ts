@@ -1,9 +1,8 @@
 import { AI_GUARD } from "./ai-guard";
-import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, Output, NoObjectGeneratedError } from "ai";
 import { z } from "zod";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import { createLovableAiGatewayRunIdFetch } from "./ai-run-id.server.ts";
+import { getAiConfig } from "./ai-provider.server";
 
 const schema = z.object({
   questions: z.array(z.object({ question: z.string(), options: z.array(z.string()), correct: z.number().nullable() })),
@@ -31,22 +30,13 @@ export function cleanExtracted(qs: ExtractedQuestion[]): ExtractedQuestion[] {
 }
 
 export async function extractWithAI(text: string) {
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (!apiKey) throw new Error("خدمة القراءة غير مهيأة");
-  const gateway = createLovableAiGatewayRunIdFetch();
-  const provider = createOpenAI({
-    baseURL: "https://ai.gateway.lovable.dev/v1",
-    apiKey,
-    headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-    fetch: gateway.fetch,
-  });
+  const { model, gateway } = getAiConfig();
   const result = streamText({
-    model: provider.responses("openai/gpt-6-astra"),
-    instructions: AI_GUARD + INSTRUCTIONS,
+    model,
+    system: AI_GUARD + INSTRUCTIONS,
     prompt: text,
     output: Output.object({ schema }),
     maxRetries: 1,
-    providerOptions: { openai: { store: false, forceReasoning: true, reasoningEffort: "low", reasoningSummary: "auto", include: ["reasoning.encrypted_content"] } },
   });
   try {
     const out = await result.output;

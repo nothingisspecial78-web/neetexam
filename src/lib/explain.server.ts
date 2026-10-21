@@ -1,31 +1,21 @@
 import { AI_GUARD } from "./ai-guard";
-import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import { createLovableAiGatewayRunIdFetch } from "./ai-run-id.server.ts";
+import { getAiConfig } from "./ai-provider.server";
 
 const INSTRUCTIONS = `أنت معلّم أدب عربي. اشرح بإيجاز (جملتان إلى أربع جمل) بالعربية لماذا الإجابة الصحيحة صحيحة، ثم اذكر باختصار لماذا الخيارات الأخرى غير صحيحة. لا تغيّر الإجابة الصحيحة المعطاة.`;
 
 export async function explainWithAI(q: { question: string; options: string[]; correct: number }) {
-  const apiKey = process.env["LOVABLE_API_KEY"];
-  if (!apiKey) throw new Error("خدمة الشرح غير مهيأة");
-  const gateway = createLovableAiGatewayRunIdFetch();
-  const provider = createOpenAI({
-    baseURL: "https://ai.gateway.lovable.dev/v1",
-    apiKey,
-    headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-    fetch: gateway.fetch,
-  });
+  const { model, gateway } = getAiConfig();
   const result = streamText({
-    model: provider.responses("openai/gpt-6-astra"),
-    instructions: AI_GUARD + INSTRUCTIONS,
+    model,
+    system: AI_GUARD + INSTRUCTIONS,
     prompt: JSON.stringify({
       question: q.question,
       options: q.options,
       correct_answer: q.options[q.correct],
     }),
     maxRetries: 1,
-    providerOptions: { openai: { store: false, forceReasoning: true, reasoningEffort: "low", reasoningSummary: "auto", include: ["reasoning.encrypted_content"] } },
   });
   try {
     const text = (await result.text).trim();
