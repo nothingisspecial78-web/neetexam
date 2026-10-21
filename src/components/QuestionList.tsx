@@ -261,12 +261,13 @@ export function QuestionList({
       {ready.length > 0 && (
         <div className="sticky top-16 z-30 py-1">
           <Button
+            id="publish-ready-btn"
             size="lg"
-            className="w-full h-12 rounded-2xl font-bold shadow-md bg-gradient-to-l from-primary-700 to-primary-500 text-white gap-2"
+            className="w-full h-14 rounded-2xl font-bold shadow-lg bg-emerald-600 hover:bg-emerald-700 text-white gap-2 transition-transform active:scale-[0.98]"
             onClick={publish}
           >
-            <Send className="h-4 w-4" />
-            <span>انشر {ready.length} سؤالًا جاهزًا في الوحدات</span>
+            <Send className="h-5 w-5 rtl:rotate-180" />
+            <span className="text-sm sm:text-base font-bold">انشر {ready.length} سؤالًا جاهزًا في الوحدات</span>
           </Button>
         </div>
       )}

@@ -1,10 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Shuffle, Pencil, Merge, Split, ClipboardCheck, Upload, BookOpen, Circle } from "lucide-react";
+import { Shuffle, Pencil, Merge, Split, ClipboardCheck, Upload, BookOpen, Circle, Sparkles, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { unitsOptions, pickRandomUnit, type UnitStat } from "@/lib/units";
+import { myQuestionsOptions } from "@/lib/my-questions";
+import { publishQuestions } from "@/lib/questions.functions";
+import { isReady } from "@/lib/question-rules";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -43,10 +47,33 @@ function Units() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { data } = useSuspenseQuery(unitsOptions(user.id));
+  const { data: myQuestions } = useQuery(myQuestionsOptions(user.id));
+  const publishFn = useServerFn(publishQuestions);
+  const [publishing, setPublishing] = useState(false);
+
+  const drafts = (myQuestions ?? []).filter((q) => q.status === "draft");
+  const readyDrafts = drafts.filter(isReady);
+
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["dashboard", user.id] });
     return qc.invalidateQueries({ queryKey: ["units", user.id] });
   };
+
+  async function publishAllDrafts() {
+    if (publishing || !readyDrafts.length) return;
+    setPublishing(true);
+    try {
+      const { ids } = await publishFn({ data: { ids: readyDrafts.map((q) => q.id) } });
+      toast.success(`تم نشر ${ids.length} سؤالًا وتجميعها في وحدات دراسية بنجاح! 🎉`);
+      await refresh();
+      void qc.invalidateQueries({ queryKey: ["my-questions", user.id] });
+    } catch {
+      toast.error("تعذّر نشر الأسئلة، حاول مجددًا");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   const [action, setAction] = useState<Action>(null);
   const mine = data.stats.filter((s) => !s.owner_name);
   const close = () => setAction(null);
@@ -64,26 +91,77 @@ function Units() {
       <AppHeader title="الوحدات" back />
       <main className="mx-auto max-w-2xl px-4 py-6">
         {!data.stats.length ? (
-          /* Empty state */
-          <div className="animate-scale-in flex flex-col items-center rounded-2xl border bg-card p-10 text-center shadow-card">
-            <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-400 dark:bg-emerald-900/30">
-              <BookOpen className="h-10 w-10" strokeWidth={1.5} />
+          drafts.length > 0 ? (
+            /* Empty units state but drafts waiting to be published */
+            <div className="animate-scale-in flex flex-col items-center rounded-2xl border border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/20 p-8 sm:p-10 text-center shadow-card">
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <Sparkles className="h-10 w-10 animate-pulse" strokeWidth={1.5} />
+              </div>
+              <h2 className="font-display text-xl font-bold text-foreground">
+                لديك {drafts.length} سؤالاً تم رفعها وبانتظار النشر!
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground max-w-md">
+                لقد قمت برفع الأسئلة ومراجعتها بنجاح. انقر على الزر أدناه لتجميعها تلقائيًا في وحدات دراسية حسب موضوعاتها والبدء بالتدرّب الآن.
+              </p>
+              <div className="mt-6 flex flex-col sm:flex-row items-center gap-3 w-full max-w-sm">
+                <Button
+                  id="publish-drafts-units-btn"
+                  disabled={publishing || !readyDrafts.length}
+                  className="w-full h-12 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-md transition-transform active:scale-[0.98]"
+                  onClick={publishAllDrafts}
+                >
+                  <Send className="h-4 w-4 rtl:rotate-180" />
+                  {publishing ? "جارٍ إنشاء الوحدات…" : `انشر ${readyDrafts.length} سؤالاً الآن في الوحدات`}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full h-12 rounded-xl font-semibold"
+                  onClick={() => navigate({ to: "/app/questions" })}
+                >
+                  مراجعة الأسئلة ({drafts.length})
+                </Button>
+              </div>
             </div>
-            <h2 className="font-display text-xl font-bold">لا توجد وحدات بعد</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              انشر أسئلة لتُجمع تلقائيًا في وحدات حسب موضوعها.
-            </p>
-            <Button
-              id="units-upload-btn"
-              className="mt-6 h-12 rounded-xl px-6 font-semibold"
-              onClick={() => navigate({ to: "/app/upload" })}
-            >
-              <Upload className="h-4 w-4" />
-              ارفع أسئلتك
-            </Button>
-          </div>
+          ) : (
+            /* Regular empty state */
+            <div className="animate-scale-in flex flex-col items-center rounded-2xl border bg-card p-10 text-center shadow-card">
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-400 dark:bg-emerald-900/30">
+                <BookOpen className="h-10 w-10" strokeWidth={1.5} />
+              </div>
+              <h2 className="font-display text-xl font-bold">لا توجد وحدات بعد</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                انشر أسئلة لتُجمع تلقائيًا في وحدات حسب موضوعها.
+              </p>
+              <Button
+                id="units-upload-btn"
+                className="mt-6 h-12 rounded-xl px-6 font-semibold"
+                onClick={() => navigate({ to: "/app/upload" })}
+              >
+                <Upload className="h-4 w-4" />
+                ارفع أسئلتك
+              </Button>
+            </div>
+          )
         ) : (
           <>
+            {/* If units exist AND there are unpublished drafts */}
+            {readyDrafts.length > 0 && (
+              <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-950 dark:text-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>لديك <strong>{readyDrafts.length}</strong> سؤالاً جاهزاً لم يُنشر بعد في الوحدات.</span>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={publishing}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shrink-0 gap-1.5 self-start sm:self-auto"
+                  onClick={publishAllDrafts}
+                >
+                  <Send className="h-3.5 w-3.5 rtl:rotate-180" />
+                  {publishing ? "جارٍ النشر…" : `انشر الآن (${readyDrafts.length})`}
+                </Button>
+              </div>
+            )}
             {/* Action buttons */}
             <div className="mb-5 grid grid-cols-2 gap-3">
               <Button
