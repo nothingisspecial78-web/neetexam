@@ -60,6 +60,7 @@ export function BottomNav({ incomingFriendsCount = 0, arenaInvitesCount = 0 }: B
             <Link
               key={item.to}
               to={item.to}
+              preload="intent"
               className={`relative flex min-h-[50px] min-w-[56px] flex-col items-center justify-center rounded-2xl px-2 py-1 transition-all ${
                 item.active
                   ? "text-[#2DD4A8] font-bold"

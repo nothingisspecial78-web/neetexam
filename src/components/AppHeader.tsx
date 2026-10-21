@@ -61,6 +61,7 @@ export function AppHeader({ title, back }: { title?: string; back?: boolean }) {
               <Link
                 key={item.to}
                 to={item.to}
+                preload="intent"
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
                   item.active
                     ? "border border-[#2DD4A8]/40 bg-[#14B58C]/15 text-[#2DD4A8] shadow-[0_0_16px_rgba(20,181,140,0.25)]"

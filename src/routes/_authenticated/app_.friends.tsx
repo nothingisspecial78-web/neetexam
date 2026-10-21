@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { queryOptions, useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useSuspenseQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
+import { getFriendSharingPermissions, toggleFriendQuestionSharing } from "@/lib/friends.functions";
 import {
   Copy,
   Check,
@@ -115,7 +116,16 @@ function Friends() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const challengeFn = useServerFn(challengeFriend);
+  const getSharingFn = useServerFn(getFriendSharingPermissions);
+  const toggleSharingFn = useServerFn(toggleFriendQuestionSharing);
+
   const { data } = useSuspenseQuery(friendsOptions(user.id));
+  const sharingQuery = useQuery({
+    queryKey: ["friend-sharing", user.id],
+    queryFn: () => getSharingFn(),
+    staleTime: 30_000,
+  });
+
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Card[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -126,7 +136,39 @@ function Friends() {
     qc.invalidateQueries({ queryKey: ["units", user.id] });
     qc.invalidateQueries({ queryKey: ["incoming", user.id] });
     qc.invalidateQueries({ queryKey: ["incoming-badge", user.id] });
+    qc.invalidateQueries({ queryKey: ["friend-sharing", user.id] });
   };
+
+  async function toggleSharing(friendId: string, currentAllowed: boolean) {
+    const next = !currentAllowed;
+    // Optimistic cache update for instant UI feedback
+    qc.setQueryData(["friend-sharing", user.id], (old: any) => {
+      if (!old) return old;
+      const myAllowed = { ...old.myAllowed, [friendId]: next };
+      const friendsAllowedMe = { ...old.friendsAllowedMe };
+      const mutual = new Set<string>(old.mutualAllowed || []);
+      if (next && friendsAllowedMe[friendId]) {
+        mutual.add(friendId);
+      } else {
+        mutual.delete(friendId);
+      }
+      return { myAllowed, friendsAllowedMe, mutualAllowed: Array.from(mutual) };
+    });
+
+    try {
+      await toggleSharingFn({ data: { friendId, allow: next } });
+      toast.success(
+        next
+          ? "سمحت بمشاركة أسئلتك. عندما يوافق صديقك أيضًا ستندمج بنوككما معًا!"
+          : "تم إيقاف مشاركة أسئلتك مع هذا الصديق"
+      );
+      void qc.invalidateQueries({ queryKey: ["friend-sharing", user.id] });
+      void qc.invalidateQueries({ queryKey: ["units", user.id] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "تعذّر تغيير حالة المشاركة");
+      void qc.invalidateQueries({ queryKey: ["friend-sharing", user.id] });
+    }
+  }
 
   async function search(e: React.FormEvent) {
     e.preventDefault();
@@ -333,39 +375,79 @@ function Friends() {
                     لا يوجد أصدقاء مضافون بعد
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
-                    أضف زملاءك باستخدام الرمز أو الاسم أعلاه. بمجرد قبول الطلب ستندمج بنوك أسئلتكما لتتدرّبا معًا!
+                    أضف زملاءك باستخدام الرمز أو الاسم أعلاه. عند قبول الصداقة وسماح كلاكما بمشاركة الأسئلة ستندمج بنوك أسئلتكما لتتدرّبا معًا!
                   </p>
                 </div>
               ) : (
                 friends.map((r) => {
                   const online = isOnline(r.card?.last_seen_at);
+                  const iAllowed = Boolean(sharingQuery.data?.myAllowed?.[r.other]);
+                  const theyAllowed = Boolean(sharingQuery.data?.friendsAllowedMe?.[r.other]);
+                  const isMutual = iAllowed && theyAllowed;
                   return (
                     <div
                       key={r.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all hover:border-primary/40 hover:shadow-sm"
+                      className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all hover:border-primary/40 hover:shadow-sm"
                     >
-                      <Person card={r.card} online={online} />
-                      <div className="flex items-center gap-2 self-end sm:self-center">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <Person card={r.card} online={online} />
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <Button
+                            size="sm"
+                            disabled={!online}
+                            onClick={() => challenge(r.other)}
+                            className={`rounded-xl gap-1.5 font-semibold shadow-xs ${
+                              online
+                                ? "bg-amber-500 hover:bg-amber-600 text-white"
+                                : "opacity-50"
+                            }`}
+                          >
+                            <Swords className="h-4 w-4" />
+                            <span>تحدٍّ</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => remove(r.id, "تمت إزالة الصديق وفصل بنوك الأسئلة")}
+                            className="rounded-xl text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          >
+                            إزالة
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Question sharing permission control */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-border/60">
+                        <div className="flex items-center gap-1.5 text-xs">
+                          {isMutual ? (
+                            <span className="inline-flex items-center gap-1 font-semibold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <Check className="h-3.5 w-3.5" />
+                              المشاركة متبادلة ومفعّلة بنجاح 🤝 (تتشاركان الأسئلة)
+                            </span>
+                          ) : iAllowed ? (
+                            <span className="inline-flex items-center gap-1 font-medium px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <Clock className="h-3.5 w-3.5" />
+                              سمحت بالمشاركة (بانتظار موافقة الصديق ⏳)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 font-medium px-2.5 py-1 rounded-full bg-muted/80 text-muted-foreground">
+                              مشاركة أسئلتك مع هذا الصديق متوقفة
+                            </span>
+                          )}
+                        </div>
+
                         <Button
                           size="sm"
-                          disabled={!online}
-                          onClick={() => challenge(r.other)}
-                          className={`rounded-xl gap-1.5 font-semibold shadow-xs ${
-                            online
-                              ? "bg-amber-500 hover:bg-amber-600 text-white"
-                              : "opacity-50"
+                          variant={iAllowed ? "outline" : "default"}
+                          className={`h-8 px-3 rounded-xl text-xs font-semibold gap-1.5 transition-all ${
+                            iAllowed
+                              ? "border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                              : "bg-[#14B58C] hover:bg-[#109975] text-white shadow-xs"
                           }`}
+                          onClick={() => toggleSharing(r.other, iAllowed)}
                         >
-                          <Swords className="h-4 w-4" />
-                          <span>تحدٍّ</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => remove(r.id, "تمت إزالة الصديق وفصل بنوك الأسئلة")}
-                          className="rounded-xl text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        >
-                          إزالة
+                          <Share2 className="h-3.5 w-3.5" />
+                          <span>{iAllowed ? "إلغاء الإذن بالمشاركة" : "السماح بمشاركة أسئلتي"}</span>
                         </Button>
                       </div>
                     </div>

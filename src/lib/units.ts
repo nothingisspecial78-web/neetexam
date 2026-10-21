@@ -72,12 +72,28 @@ type RawQ = PracticeQ & { owner_id: string; content_hash: string };
 
 // Combines own and accepted friends' banks: friend questions join your unit of the same
 // topic (or one shared unit per topic), duplicates (same content) keep only one copy, own first.
-export function combineBanks(userId: string, units: RawUnit[], questions: RawQ[], names: Map<string, string | null>) {
+// If allowedFriendIds is provided, only friends who have mutually agreed to share questions are merged.
+export function combineBanks(
+  userId: string,
+  units: RawUnit[],
+  questions: RawQ[],
+  names: Map<string, string | null>,
+  allowedFriendIds?: Set<string>,
+) {
   const mine = (o: string) => o === userId;
+  const filteredUnits = allowedFriendIds
+    ? units.filter((u) => mine(u.owner_id) || allowedFriendIds.has(u.owner_id))
+    : units;
+  const filteredQuestions = allowedFriendIds
+    ? questions.filter((q) => mine(q.owner_id) || allowedFriendIds.has(q.owner_id))
+    : questions;
+
   const target = new Map<string, string>(); // original unit id -> displayed unit id
   const groups = new Map<string, { id: string; owners: Set<string> }>(); // topic -> displayed unit
   const owners = new Map<string, Set<string>>(); // displayed unit id -> contributing owners
-  const sorted = [...units].sort((a, b) => Number(!mine(a.owner_id)) - Number(!mine(b.owner_id)) || a.id.localeCompare(b.id));
+  const sorted = [...filteredUnits].sort(
+    (a, b) => Number(!mine(a.owner_id)) - Number(!mine(b.owner_id)) || a.id.localeCompare(b.id),
+  );
   for (const u of sorted) {
     const g = groups.get(u.topic_area);
     if (!g || mine(u.owner_id)) {
@@ -92,44 +108,83 @@ export function combineBanks(userId: string, units: RawUnit[], questions: RawQ[]
   }
   const seen = new Set<string>();
   const qs: PracticeQ[] = [];
-  for (const q of [...questions].sort((a, b) => Number(!mine(a.owner_id)) - Number(!mine(b.owner_id)))) {
+  for (const q of [...filteredQuestions].sort((a, b) => Number(!mine(a.owner_id)) - Number(!mine(b.owner_id)))) {
     const unit = q.unit_id ? target.get(q.unit_id) : undefined;
     if (!unit || seen.has(q.content_hash)) continue;
     seen.add(q.content_hash);
     const { owner_id, content_hash: _h, ...rest } = q;
-    qs.push({ ...rest, content_hash: _h, unit_id: unit, from_name: mine(owner_id) ? null : names.get(owner_id) ?? "صديق" });
+    qs.push({
+      ...rest,
+      content_hash: _h,
+      unit_id: unit,
+      from_name: mine(owner_id) ? null : names.get(owner_id) ?? "صديق",
+    });
   }
-  const shown = sorted.filter((u) => target.get(u.id) === u.id).map((u) => ({
-    id: u.id, name: u.name, owner_id: u.owner_id,
-    owner_name: mine(u.owner_id) ? null : [...owners.get(u.id)!].map((o) => names.get(o) ?? "صديق").join("، "),
-  }));
+  const shown = sorted
+    .filter((u) => target.get(u.id) === u.id)
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      owner_id: u.owner_id,
+      owner_name: mine(u.owner_id)
+        ? null
+        : [...owners.get(u.id)!].map((o) => names.get(o) ?? "صديق").join("، "),
+    }));
   return { units: shown, questions: qs };
 }
 
-export const unitsOptions = (userId: string) => queryOptions({
-  queryKey: ["units", userId],
-  queryFn: async () => {
-    const [u, q, a, r, p] = await Promise.all([
-      // RLS returns own units/questions plus accepted friends' active ones only.
-      supabase.from("units").select("id, name, owner_id, topic_area").order("name"),
-      supabase.from("questions").select("id, owner_id, content_hash, unit_id, question_text, options, correct_index, topic_area, explanation").eq("status", "active").not("unit_id", "is", null),
-      supabase.from("answers").select("question_id, is_correct, created_at").eq("owner_id", userId),
-      supabase.from("test_results").select("unit_ids, total, correct").eq("owner_id", userId).eq("mode", "practice"),
-      supabase.rpc("related_profiles"),
-    ]);
-    const err = u.error ?? q.error ?? a.error ?? r.error ?? p.error;
-    if (err) throw err;
-    const names = new Map((p.data ?? []).map((x) => [x.id, x.display_name] as const));
-    const raw = (q.data ?? []).filter((x) => x.correct_index !== null) as RawQ[];
-    const combined = combineBanks(userId, u.data ?? [], raw, names);
-    const stats = computeUnitStats(combined.units, combined.questions, a.data ?? [], r.data ?? []);
-    // Own units first, then friends' shared units.
-    stats.sort((x, y) => Number(!!x.owner_name) - Number(!!y.owner_name));
-    return { stats, questions: combined.questions };
-  },
-  staleTime: 10_000,
-  placeholderData: (prev) => prev,
-});
+export const unitsOptions = (userId: string) =>
+  queryOptions({
+    queryKey: ["units", userId],
+    queryFn: async () => {
+      const [u, q, a, r, p, shares] = await Promise.all([
+        // RLS returns own units/questions plus accepted friends' active ones only.
+        supabase.from("units").select("id, name, owner_id, topic_area").order("name"),
+        supabase
+          .from("questions")
+          .select("id, owner_id, content_hash, unit_id, question_text, options, correct_index, topic_area, explanation")
+          .eq("status", "active")
+          .not("unit_id", "is", null),
+        supabase.from("answers").select("question_id, is_correct, created_at").eq("owner_id", userId),
+        supabase.from("test_results").select("unit_ids, total, correct").eq("owner_id", userId).eq("mode", "practice"),
+        supabase.rpc("related_profiles"),
+        supabase
+          .from("activity_log")
+          .select("user_id, details, created_at")
+          .eq("event_type", "share_permission")
+          .order("created_at", { ascending: true }),
+      ]);
+      const err = u.error ?? q.error ?? a.error ?? r.error ?? p.error;
+      if (err) throw err;
+
+      // Check mutual sharing permissions between users
+      const perms = new Map<string, boolean>();
+      for (const log of (shares.data || [])) {
+        const target = (log.details as any)?.friend_id;
+        const allowed = Boolean((log.details as any)?.allowed);
+        if (log.user_id && target) perms.set(`${log.user_id}->${target}`, allowed);
+      }
+
+      const mutualAllowed = new Set<string>();
+      const friendList = (p.data ?? []).map((x: any) => x.id);
+      for (const fid of friendList) {
+        if (perms.get(`${userId}->${fid}`) && perms.get(`${fid}->${userId}`)) {
+          mutualAllowed.add(fid);
+        }
+      }
+
+      const names = new Map((p.data ?? []).map((x) => [x.id, x.display_name] as const));
+      const raw = (q.data ?? []).filter((x) => x.correct_index !== null) as RawQ[];
+      const combined = combineBanks(userId, u.data ?? [], raw, names, mutualAllowed);
+      const stats = computeUnitStats(combined.units, combined.questions, a.data ?? [], r.data ?? []);
+      // Own units first, then friends' shared units.
+      stats.sort((x, y) => Number(!!x.owner_name) - Number(!!y.owner_name));
+      return { stats, questions: combined.questions };
+    },
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    placeholderData: (prev) => prev,
+  });
 
 export async function saveAnswer(a: { question_id: string; chosen_index: number | null; is_correct: boolean; time_ms: number; mode: "practice" | "test" }) {
   const { error } = await supabase.from("answers").insert(a);

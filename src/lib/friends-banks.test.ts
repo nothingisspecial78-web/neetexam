@@ -32,6 +32,28 @@ describe("friends' shared banks", () => {
     expect(s).toHaveLength(1);
     expect(s[0]!.total).toBe(1);
   });
+  it("only friends with mutual sharing allowed join my units", () => {
+    // When allowedFriendIds does not contain fr:
+    const withoutPerm = combineBanks(
+      me,
+      units,
+      [q("m1", me, "m-nahw", "h1"), q("f1", fr, "f-nahw", "h2")],
+      names,
+      new Set(), // no mutual permission
+    );
+    expect(withoutPerm.questions.map((x) => x.id)).toEqual(["m1"]);
+    expect(withoutPerm.units.map((u) => u.id)).toEqual(["m-nahw"]);
+
+    // When allowedFriendIds contains fr:
+    const withPerm = combineBanks(
+      me,
+      units,
+      [q("m1", me, "m-nahw", "h1"), q("f1", fr, "f-nahw", "h2")],
+      names,
+      new Set([fr]), // mutual permission active
+    );
+    expect(withPerm.questions.map((x) => x.id).sort()).toEqual(["f1", "m1"]);
+  });
   it("online means seen within 5 minutes", () => {
     const now = Date.parse("2026-10-20T12:00:00Z");
     expect(isOnline("2026-10-20T11:56:00Z", now)).toBe(true);

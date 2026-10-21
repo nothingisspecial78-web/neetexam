@@ -8,6 +8,7 @@ export const myQuestionsOptions = (userId: string) => queryOptions({
     if (error) throw error;
     return data;
   },
-  staleTime: 10_000,
+  staleTime: 60_000,
+  gcTime: 10 * 60_000,
   placeholderData: (prev) => prev,
 });

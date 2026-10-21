@@ -25,7 +25,6 @@ import { AppHeader } from "@/components/AppHeader";
 import { usePresence } from "@/lib/presence";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DeleteAccount } from "@/components/DeleteAccount";
 
 // ── Dark Emerald Glow Reference Components ──
 import { HeroContinueCard } from "@/components/dark-theme/HeroContinueCard";
@@ -44,8 +43,12 @@ export const Route = createFileRoute("/_authenticated/app")({
         : "all",
     period: search.period === "week" ? "week" : "day",
   }),
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(dashboardOptions(context.user.id)),
+  loader: ({ context }) => {
+    const query = dashboardOptions(context.user.id);
+    const cached = context.queryClient.getQueryData(query.queryKey);
+    if (cached) return cached;
+    return context.queryClient.ensureQueryData(query);
+  },
   errorComponent: () => <p role="alert" className="text-center py-12 text-destructive">تعذّر تحميل لوحة الطالب.</p>,
   notFoundComponent: () => <p className="text-center py-12 text-muted-foreground">الصفحة غير موجودة.</p>,
   head: () => ({
@@ -118,6 +121,9 @@ function StudentHome() {
       if (error) throw error;
       return data;
     },
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    placeholderData: (prev) => prev,
   });
 
   // Raw dashboard activity stats
@@ -545,10 +551,6 @@ function StudentHome() {
               )}
             </div>
 
-            {/* ── 9. Danger Zone: Account Deletion ── */}
-            <div className="pt-2">
-              <DeleteAccount variant="card" />
-            </div>
           </>
         )}
       </main>

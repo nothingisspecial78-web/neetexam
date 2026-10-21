@@ -40,6 +40,7 @@ function Arena() {
   const [viewId, setViewId] = useState<string | null>(null);
   const [waitFrom, setWaitFrom] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
+  const [isSearchingOptimistic, setIsSearchingOptimistic] = useState(false);
 
   const me = useQuery({
     queryKey: ["arena-me", user.id],
@@ -161,11 +162,12 @@ function Arena() {
 
   useEffect(() => {
     if (match?.status === "active" && viewId !== match.id && !closed.current.has(match.id)) {
+      setIsSearchingOptimistic(false);
       setViewId(match.id);
     }
   }, [match, viewId]);
 
-  const waiting = match?.status === "waiting";
+  const waiting = match?.status === "waiting" || isSearchingOptimistic;
   useEffect(() => {
     if (!waiting) return;
     const t = setInterval(() => {
@@ -186,6 +188,7 @@ function Arena() {
     setViewId(null);
     setWaitFrom(Date.now());
     setNow(Date.now());
+    setIsSearchingOptimistic(true); // Instant radar UI activation with zero freeze
     try {
       const res = await findOpponentServer();
       if (res?.matchId) {
@@ -199,6 +202,7 @@ function Arena() {
   }
 
   function exitMatch() {
+    setIsSearchingOptimistic(false);
     if (viewId) closed.current.add(viewId);
     setViewId(null);
     void qc.invalidateQueries({ queryKey: ["dashboard", user.id] });
@@ -314,8 +318,14 @@ function Arena() {
         </div>
       );
     }
-  } else if (match?.status === "waiting") {
+  } else if (match?.status === "waiting" || isSearchingOptimistic) {
     const long = now - waitFrom > WAIT_MS;
+    const cancelWait = async () => {
+      setIsSearchingOptimistic(false);
+      if (match?.id) {
+        await call(supabase.rpc("cancel_match", { _id: match.id }));
+      }
+    };
     body = (
       <div className="animate-scale-in rounded-2xl border bg-card p-8 text-center shadow-soft">
         {/* Pulsing radar icon */}
@@ -341,7 +351,7 @@ function Arena() {
               variant="outline"
               className="h-12 rounded-xl"
               onClick={async () => {
-                await call(supabase.rpc("cancel_match", { _id: match.id }));
+                await cancelWait();
                 navigate({ to: "/app/units" });
               }}
             >
@@ -352,7 +362,7 @@ function Arena() {
           <Button
             variant="ghost"
             className="mt-5 h-10 rounded-xl text-muted-foreground"
-            onClick={() => call(supabase.rpc("cancel_match", { _id: match.id }))}
+            onClick={() => void cancelWait()}
           >
             إلغاء
           </Button>
