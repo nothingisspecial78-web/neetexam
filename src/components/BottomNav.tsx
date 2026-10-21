@@ -51,7 +51,7 @@ export function BottomNav({ incomingFriendsCount = 0, arenaInvitesCount = 0 }: B
   return (
     <nav
       aria-label="التنقل الرئيسي"
-      className="fixed bottom-0 inset-x-0 z-40 border-t border-border/70 bg-card/95 backdrop-blur-md px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] md:hidden"
+      className="fixed bottom-0 inset-x-0 z-40 border-t border-border/70 bg-card/95 backdrop-blur-md px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] md:hidden"
     >
       <div className="mx-auto flex max-w-md items-center justify-around">
         {navItems.map((item) => {

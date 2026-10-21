@@ -32,7 +32,7 @@ export function AppHeader({ title, back }: { title?: string; back?: boolean }) {
             to="/app"
             className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-all"
           >
-            <BookOpen className="h-5 w-5 text-accent-400" />
+            <img src="/app-icon.png" alt="مِدْرَاس" className="h-7 w-7 rounded-lg object-cover shadow-xs" />
           </Link>
         )}
         <div className="flex items-center gap-2">

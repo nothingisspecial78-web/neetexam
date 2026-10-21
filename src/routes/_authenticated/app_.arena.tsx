@@ -414,6 +414,12 @@ function Arena() {
                     onClick={async () => {
                       try {
                         await challengeFn({ data: { friendId: f.id, duration: 60 } });
+                        const ch = supabase.channel(`arena-invites-${f.id}`);
+                        void ch.send({
+                          type: "broadcast",
+                          event: "challenge_sent",
+                          payload: { challengerId: user.id },
+                        });
                         toast.success(`تم إرسال التحدي إلى ${f.display_name ?? "صديقك"}! ⚔️`);
                         void cur.refetch();
                       } catch (e) {

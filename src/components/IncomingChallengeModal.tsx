@@ -1,24 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Swords, Clock, X, Check, Flame } from "lucide-react";
+import { Swords, Clock, X, Flame } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { respondChallenge } from "@/lib/arena.functions";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 
 // Web Audio API chime sound - zero external assets needed
 function playInviteChime() {
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
@@ -61,7 +56,6 @@ type InviteData = {
 
 export function IncomingChallengeModal({ userId }: { userId: string }) {
   const navigate = useNavigate();
-  const router = useRouterState();
   const qc = useQueryClient();
   const respondFn = useServerFn(respondChallenge);
   const [responding, setResponding] = useState(false);
@@ -71,44 +65,41 @@ export function IncomingChallengeModal({ userId }: { userId: string }) {
   const { data: invite, refetch } = useQuery({
     queryKey: ["incoming-arena-invite", userId],
     queryFn: async (): Promise<InviteData | null> => {
-      const since = new Date(Date.now() - 65_000).toISOString();
       const { data, error } = await supabase
         .from("matches")
-        .select("id, player_a, a_name, duration_s, created_at")
+        .select("id, player_a, a_name, duration_s, created_at, status")
         .eq("player_b", userId)
         .eq("kind", "challenge")
-        .in("status", ["invited", "waiting"])
-        .gt("created_at", since)
+        .eq("status", "invited")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (error) return null;
-      return data as InviteData | null;
+      if (error || !data) return null;
+
+      // Filter out stale invites (> 65 seconds old, allowing +/- 10s clock drift)
+      const ageMs = Date.now() - new Date(data.created_at).getTime();
+      if (ageMs > 65_000 || ageMs < -15_000) return null;
+
+      return data as InviteData;
     },
-    refetchInterval: 2500, // Poll every 2.5s for rapid challenge detection
+    refetchInterval: 1500, // Background poll every 1.5s for instant reaction
   });
 
-  // Realtime subscription for instant notification
+  // Realtime subscription via Broadcast and Postgres changes for 0ms notification
   useEffect(() => {
     const channel = supabase
-      .channel("arena-invites-" + userId)
+      .channel(`arena-invites-${userId}`)
+      .on("broadcast", { event: "challenge_sent" }, () => {
+        void refetch();
+      })
+      .on("broadcast", { event: "challenge_updated" }, () => {
+        void refetch();
+      })
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
-          schema: "public",
-          table: "matches",
-          filter: `player_b=eq.${userId}`,
-        },
-        () => {
-          void refetch();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "matches",
           filter: `player_b=eq.${userId}`,
@@ -138,7 +129,8 @@ export function IncomingChallengeModal({ userId }: { userId: string }) {
     if (!invite) return;
     const createdAt = new Date(invite.created_at).getTime();
     const update = () => {
-      const remaining = Math.max(0, 60 - Math.floor((Date.now() - createdAt) / 1000));
+      const elapsed = Math.floor((Date.now() - createdAt) / 1000);
+      const remaining = Math.max(0, 60 - Math.max(0, elapsed));
       setTimeLeft(remaining);
       if (remaining <= 0) {
         void refetch();
@@ -185,59 +177,64 @@ export function IncomingChallengeModal({ userId }: { userId: string }) {
   }
 
   return (
-    <Dialog open={true} onOpenChange={(open) => { if (!open) handleDecline(); }}>
-      <DialogContent className="max-w-md rounded-3xl border-2 border-amber-500/40 p-6 text-center shadow-2xl backdrop-blur-xl sm:p-8" dir="rtl">
-        {/* Radiant glowing header badge */}
-        <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center">
-          <span className="absolute inset-0 animate-ping rounded-full bg-amber-500/20" />
-          <span className="relative flex h-full w-full items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 ring-2 ring-amber-500/30">
-            <Swords className="h-10 w-10 animate-bounce" />
-          </span>
-        </div>
+    <div
+      role="alert"
+      dir="rtl"
+      className="fixed top-0 inset-x-0 z-[100] animate-in slide-in-from-top-full duration-300 shadow-2xl"
+    >
+      <div className="bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border-b-2 border-amber-500 text-white px-3 py-2.5 sm:px-6 sm:py-3 transition-all">
+        <div className="mx-auto max-w-5xl flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* Right info section (Challenger info + icon) */}
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400 ring-2 ring-amber-500/50">
+              <span className="absolute inset-0 animate-ping rounded-2xl bg-amber-500/30" />
+              <Swords className="h-6 w-6 relative animate-bounce" />
+            </div>
 
-        <DialogHeader className="space-y-1.5 text-center">
-          <div className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 mx-auto">
-            <Flame className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-            <span>دعوة منافسة مباشرة في الساحة</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold text-amber-300">
+                  <Flame className="h-3 w-3 fill-amber-400 text-amber-400" />
+                  دعوة منافسة مباشرة
+                </span>
+                <span className="flex items-center gap-1 text-[11px] font-mono text-amber-300 bg-black/40 px-2 py-0.5 rounded-full">
+                  <Clock className="h-3 w-3 text-amber-400" />
+                  {timeLeft} ثانية
+                </span>
+              </div>
+              <h4 className="text-sm sm:text-base font-bold text-white tracking-tight mt-0.5 truncate">
+                {invite.a_name ?? "صديقك"} يتحدّاك الآن في الساحة!
+              </h4>
+            </div>
           </div>
-          <DialogTitle className="font-display text-2xl font-bold tracking-tight text-foreground">
-            {invite.a_name ?? "صديقك"} يتحدّاك الآن!
-          </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            مبارزة مباشرة لمدة دقيقة واحدة — أجب أسرع وأدق لتفوز بالرصيد والمركز!
-          </DialogDescription>
-        </DialogHeader>
 
-        {/* Timer countdown bar */}
-        <div className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-muted/60 px-3 py-1.5 text-xs text-muted-foreground">
-          <Clock className="h-3.5 w-3.5 text-amber-500" />
-          <span>تنتهي الدعوة خلال <strong>{timeLeft}</strong> ثانية</span>
+          {/* Left action buttons */}
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+            <Button
+              id="accept-challenge-topbar-btn"
+              disabled={responding}
+              size="sm"
+              className="flex-1 sm:flex-initial h-10 px-5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40 gap-1.5 transition-transform active:scale-95"
+              onClick={handleAccept}
+            >
+              <Swords className="h-4 w-4" />
+              <span>{responding ? "جارٍ البدء…" : "قبول وتحدي"}</span>
+            </Button>
+
+            <Button
+              id="decline-challenge-topbar-btn"
+              disabled={responding}
+              size="sm"
+              variant="outline"
+              className="h-10 px-3.5 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30 hover:border-rose-500/50 transition-colors"
+              onClick={handleDecline}
+            >
+              <X className="h-4 w-4" />
+              <span>رفض</span>
+            </Button>
+          </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="mt-6 flex flex-col gap-2.5">
-          <Button
-            id="accept-challenge-modal-btn"
-            disabled={responding}
-            className="h-14 w-full rounded-2xl font-bold text-base bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-lg shadow-emerald-600/20 transition-transform active:scale-[0.98]"
-            onClick={handleAccept}
-          >
-            <Swords className="h-5 w-5 rtl:rotate-90" />
-            <span>{responding ? "جارٍ بدء المنافسة…" : "قبول التحدي ودخول المنافسة"}</span>
-          </Button>
-
-          <Button
-            id="decline-challenge-modal-btn"
-            disabled={responding}
-            variant="ghost"
-            className="h-11 w-full rounded-xl text-xs font-medium text-muted-foreground hover:bg-muted"
-            onClick={handleDecline}
-          >
-            <X className="h-3.5 w-3.5" />
-            <span>رفض التحدي</span>
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }

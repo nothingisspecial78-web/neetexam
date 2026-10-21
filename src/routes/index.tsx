@@ -1,8 +1,17 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Layers, Swords, Users, Upload, Trophy, Flame, Star } from "lucide-react";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: async () => {
+    if (typeof window !== "undefined") {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        throw redirect({ to: "/app" });
+      }
+    }
+  },
   head: () => ({
     meta: [
       { title: "مِدْرَاس — تدرّب على اختبار الأدب العربي" },

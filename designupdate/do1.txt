@@ -11,3 +11,13 @@ and in dashboard, i noticed when change the navigation suddenly to the dashboard
 and i added this app icon in designupdate folder as the NEET Arabic Literature App Icon.png. make this as the icon of this app.
 
 in this you can see the lovable folder, is it require for our code. can you do completely free from locable locksystem.
+
+delete all questions and delete all units are to be want. 
+
+when click each navigation bars then it feel more delay to load it, so the only work in backround, and then the frontent show as perfect for the user, user didn't understand in this back loading is going on.
+
+This web app not completly resposive for mobile users, so make this web app completely a mobile resposive when it open in moble like if assume this is mobile application, then how will perform it.
+
+if the updations that denoted in do1.txt are completed then the completed update denoted texts only remove from do1.txt file.
+
+The whole web app must be live updation system, but live updation occure in backend, not show anything in frontent, frontent show all time normal, after the updation the result show in frontent, but the user never notice it. 

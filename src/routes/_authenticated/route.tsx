@@ -8,6 +8,10 @@ import { IncomingChallengeModal } from "@/components/IncomingChallengeModal";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData.session?.user) {
+      return { user: sessionData.session.user };
+    }
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth", search: { mode: "login" } });
     return { user: data.user };
@@ -45,22 +49,26 @@ function AuthenticatedLayout() {
   const invitesQuery = useQuery({
     queryKey: ["arena-invites-badge", user.id],
     queryFn: async () => {
-      const since = new Date(Date.now() - 65_000).toISOString();
-      const { count } = await supabase
+      const { data, count } = await supabase
         .from("matches")
-        .select("id", { count: "exact", head: true })
+        .select("id, created_at", { count: "exact" })
         .eq("player_b", user.id)
         .eq("kind", "challenge")
-        .in("status", ["invited", "waiting"])
-        .gt("created_at", since);
-      return count ?? 0;
+        .eq("status", "invited");
+      if (!data) return 0;
+      // Filter out stale invites
+      const active = data.filter((m) => {
+        const age = Date.now() - new Date(m.created_at).getTime();
+        return age <= 65_000 && age >= -15_000;
+      });
+      return active.length;
     },
     refetchInterval: isDistractionFree ? false : 3000,
     enabled: !isDistractionFree,
   });
 
   return (
-    <div className={`min-h-screen ${!isDistractionFree ? "pb-20 md:pb-0" : ""}`}>
+    <div className={`min-h-screen ${!isDistractionFree ? "pb-24 md:pb-0" : ""}`}>
       <Outlet />
       <IncomingChallengeModal userId={user.id} />
       {!isDistractionFree && (

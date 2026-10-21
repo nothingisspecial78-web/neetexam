@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
@@ -12,6 +12,14 @@ import { destinationAfterLogin } from "@/lib/post-login";
 type Mode = "login" | "signup";
 
 export const Route = createFileRoute("/auth")({
+  beforeLoad: async () => {
+    if (typeof window !== "undefined") {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        throw redirect({ to: "/app" });
+      }
+    }
+  },
   validateSearch: (s: Record<string, unknown>): { mode: Mode } => ({
     mode: s["mode"] === "signup" ? "signup" : "login",
   }),

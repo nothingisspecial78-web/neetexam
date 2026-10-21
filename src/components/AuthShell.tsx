@@ -25,9 +25,7 @@ export function AuthShell({
             className="inline-flex items-center gap-2 font-display text-3xl font-bold hover:opacity-90 transition-opacity"
             aria-label="مِدْرَاس — الصفحة الرئيسية"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur-sm">
-              <BookOpen className="h-5 w-5" />
-            </span>
+            <img src="/app-icon.png" alt="مِدْرَاس" className="h-9 w-9 rounded-xl object-cover shadow-sm ring-1 ring-white/20" />
             مِدْرَاس
           </Link>
           <h1 className="mt-5 font-display text-2xl font-bold">{title}</h1>

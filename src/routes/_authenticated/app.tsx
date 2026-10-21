@@ -25,9 +25,8 @@ export const Route = createFileRoute("/_authenticated/app")({
         : "all",
     period: search.period === "week" ? "week" : "day",
   }),
-  loader: ({ context }) => {
-    void context.queryClient.prefetchQuery(dashboardOptions(context.user.id));
-  },
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(dashboardOptions(context.user.id)),
   errorComponent: () => <p role="alert">تعذّر تحميل لوحة الطالب.</p>,
   notFoundComponent: () => <p>الصفحة غير موجودة.</p>,
   head: () => ({
@@ -75,14 +74,18 @@ function StudentHome() {
   const invites = useQuery({
     queryKey: ["arena-invites", user.id],
     queryFn: async () => {
-      const since = new Date(Date.now() - 60_000).toISOString();
-      const { count } = await supabase
+      const { data } = await supabase
         .from("matches")
-        .select("id", { count: "exact", head: true })
+        .select("id, created_at")
         .eq("player_b", user.id)
-        .eq("status", "invited")
-        .gt("created_at", since);
-      return count ?? 0;
+        .eq("kind", "challenge")
+        .eq("status", "invited");
+      if (!data) return 0;
+      const active = data.filter((m) => {
+        const age = Date.now() - new Date(m.created_at).getTime();
+        return age <= 65_000 && age >= -15_000;
+      });
+      return active.length;
     },
     refetchInterval: 10_000,
   });
@@ -102,7 +105,17 @@ function StudentHome() {
       }
       return data;
     },
-    staleTime: 60_000,
+    staleTime: 300_000,
+    gcTime: 30 * 60_000,
+    placeholderData: (prev) =>
+      prev ?? {
+        display_name:
+          (user.user_metadata as Record<string, string> | undefined)?.["display_name"] ||
+          (user.user_metadata as Record<string, string> | undefined)?.["full_name"] ||
+          user.email?.split("@")[0] ||
+          "طالب",
+        onboarded: true,
+      },
   });
 
   useEffect(() => {

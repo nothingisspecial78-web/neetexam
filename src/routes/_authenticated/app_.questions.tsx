@@ -66,6 +66,7 @@ function MyQuestions() {
           <QuestionList
             search
             rows={data}
+            userId={user.id}
             setRows={(r: QRow[]) => qc.setQueryData(key, r)}
           />
         )}

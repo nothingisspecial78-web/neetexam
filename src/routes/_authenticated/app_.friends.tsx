@@ -141,6 +141,12 @@ function Friends() {
   async function challenge(id: string) {
     try {
       await challengeFn({ data: { friendId: id, duration: 60 } });
+      const ch = supabase.channel(`arena-invites-${id}`);
+      void ch.send({
+        type: "broadcast",
+        event: "challenge_sent",
+        payload: { challengerId: user.id },
+      });
       toast.success("أُرسل التحدي! جارٍ نقلك إلى الساحة… ⚔️");
       navigate({ to: "/app/arena" });
     } catch (e) {

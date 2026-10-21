@@ -3,7 +3,7 @@ import { useSuspenseQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Shuffle, Pencil, Merge, Split, ClipboardCheck, Upload, BookOpen, Circle, Sparkles, Send, FolderPlus, AlertCircle } from "lucide-react";
+import { Shuffle, Pencil, Merge, Split, ClipboardCheck, Upload, BookOpen, Circle, Sparkles, Send, FolderPlus, AlertCircle, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { unitsOptions, pickRandomUnit, type UnitStat } from "@/lib/units";
 import { myQuestionsOptions } from "@/lib/my-questions";
@@ -55,6 +55,9 @@ function Units() {
   const [publishing, setPublishing] = useState(false);
   const [section, setSection] = useState<"units" | "mistakes" | "comprehensive">("units");
   const [createOpen, setCreateOpen] = useState(false);
+  const [unitToDelete, setUnitToDelete] = useState<UnitStat | null>(null);
+  const [deleteAllUnitsOpen, setDeleteAllUnitsOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const drafts = (myQuestions ?? []).filter((q) => q.status === "draft");
   const readyDrafts = drafts.filter(isReady);
@@ -63,6 +66,42 @@ function Units() {
     void qc.invalidateQueries({ queryKey: ["dashboard", user.id] });
     return qc.invalidateQueries({ queryKey: ["units", user.id] });
   };
+
+  async function confirmDeleteUnit() {
+    if (!unitToDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await supabase.from("questions").delete().eq("unit_id", unitToDelete.id);
+      const { error } = await supabase.from("units").delete().eq("id", unitToDelete.id);
+      if (error) throw error;
+      toast.success(`تم حذف وحدة "${unitToDelete.name}" بنجاح 🗑️`);
+      await refresh();
+      void qc.invalidateQueries({ queryKey: ["my-questions", user.id] });
+    } catch {
+      toast.error("تعذّر حذف الوحدة");
+    } finally {
+      setDeleting(false);
+      setUnitToDelete(null);
+    }
+  }
+
+  async function confirmDeleteAllUnits() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await supabase.from("questions").delete().eq("owner_id", user.id);
+      const { error } = await supabase.from("units").delete().eq("owner_id", user.id);
+      if (error) throw error;
+      toast.success("تم حذف جميع الوحدات والأسئلة بنجاح 🗑️");
+      await refresh();
+      void qc.invalidateQueries({ queryKey: ["my-questions", user.id] });
+    } catch {
+      toast.error("تعذّر حذف جميع الوحدات");
+    } finally {
+      setDeleting(false);
+      setDeleteAllUnitsOpen(false);
+    }
+  }
 
   async function publishAllDrafts() {
     if (publishing || !readyDrafts.length) return;
@@ -232,14 +271,28 @@ function Units() {
 
                 {/* Toolbar */}
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                  <Button
-                    id="units-add-unit-top-btn"
-                    className="h-11 rounded-xl font-semibold gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs"
-                    onClick={() => setCreateOpen(true)}
-                  >
-                    <FolderPlus className="h-4 w-4" />
-                    إضافة وحدة جديدة
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      id="units-add-unit-top-btn"
+                      className="h-11 rounded-xl font-semibold gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs"
+                      onClick={() => setCreateOpen(true)}
+                    >
+                      <FolderPlus className="h-4 w-4" />
+                      إضافة وحدة جديدة
+                    </Button>
+
+                    {mine.length > 0 && (
+                      <Button
+                        id="units-delete-all-btn"
+                        variant="outline"
+                        className="h-11 rounded-xl font-semibold gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => setDeleteAllUnitsOpen(true)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        حذف جميع الوحدات ({mine.length})
+                      </Button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <Button
@@ -347,6 +400,15 @@ function Units() {
                                 >
                                   <Split className="h-3.5 w-3.5" />
                                 </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="حذف الوحدة"
+                                  className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => setUnitToDelete(u)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
                               </div>
                             )}
                           </div>
@@ -409,6 +471,78 @@ function Units() {
             onDone={done}
           />
         )}
+
+        {/* Delete Single Unit Dialog */}
+        <Dialog open={!!unitToDelete} onOpenChange={(open) => { if (!open) setUnitToDelete(null); }}>
+          <DialogContent className="max-w-md rounded-2xl" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-destructive flex items-center gap-2">
+                <Trash2 className="h-5 w-5" />
+                حذف الوحدة
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              هل أنت متأكد من حذف وحدة <strong>«{unitToDelete?.name}»</strong>؟
+              <br />
+              سيتم حذف الوحدة وكافة الأسئلة المرتبطة بها نهائياً ولن يمكن استرجاعها.
+            </p>
+            <DialogFooter className="mt-6 flex flex-row gap-2 justify-end">
+              <Button
+                variant="outline"
+                disabled={deleting}
+                className="rounded-xl"
+                onClick={() => setUnitToDelete(null)}
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={deleting}
+                className="rounded-xl gap-1.5"
+                onClick={confirmDeleteUnit}
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>{deleting ? "جارٍ الحذف…" : "تأكيد حذف الوحدة"}</span>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete All Units Dialog */}
+        <Dialog open={deleteAllUnitsOpen} onOpenChange={setDeleteAllUnitsOpen}>
+          <DialogContent className="max-w-md rounded-2xl" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-destructive flex items-center gap-2">
+                <Trash2 className="h-5 w-5" />
+                حذف جميع الوحدات
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              هل أنت متأكد من حذف كافة الوحدات الخاصة بك ({mine.length} وحدة)؟
+              <br />
+              سيتم حذف كافة الوحدات والأسئلة المرتبطة بها نهائياً من حسابك.
+            </p>
+            <DialogFooter className="mt-6 flex flex-row gap-2 justify-end">
+              <Button
+                variant="outline"
+                disabled={deleting}
+                className="rounded-xl"
+                onClick={() => setDeleteAllUnitsOpen(false)}
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={deleting}
+                className="rounded-xl gap-1.5"
+                onClick={confirmDeleteAllUnits}
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>{deleting ? "جارٍ الحذف…" : "تأكيد حذف جميع الوحدات"}</span>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

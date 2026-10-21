@@ -13,10 +13,18 @@ import {
   Clock,
   Layers,
   ArrowDown,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { FLAG_META, isReady, QuestionCard, type QRow } from "./QuestionCard";
 import { suggestedAnswer } from "@/lib/question-rules";
 import { publishQuestions, reviewQuestions } from "@/lib/questions.functions";
@@ -30,14 +38,17 @@ export function QuestionList({
   rows,
   setRows,
   search,
+  userId,
 }: {
   rows: QRow[];
   setRows: (r: QRow[]) => void;
   search?: boolean;
+  userId?: string;
 }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
   const [term, setTerm] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const observerTarget = useRef<HTMLDivElement | null>(null);
 
@@ -46,6 +57,47 @@ export function QuestionList({
   const qc = useQueryClient();
 
   const update = (q: QRow) => setRows(rows.map((r) => (r.id === q.id ? q : r)));
+
+  async function handleDeleteQuestion(q: QRow) {
+    try {
+      const { error } = await supabase.from("questions").delete().eq("id", q.id);
+      if (error) throw error;
+      setRows(rows.filter((r) => r.id !== q.id));
+      toast.success("تم حذف السؤال بنجاح");
+      void qc.invalidateQueries({ queryKey: ["my-questions"] });
+      void qc.invalidateQueries({ queryKey: ["units"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch {
+      toast.error("تعذّر حذف السؤال");
+    }
+  }
+
+  async function handleDeleteAllQuestions() {
+    setBusy(true);
+    try {
+      let q = supabase.from("questions").delete();
+      if (userId) {
+        q = q.eq("owner_id", userId);
+      } else if (rows[0]?.owner_id) {
+        q = q.eq("owner_id", rows[0].owner_id);
+      } else {
+        const { data: u } = await supabase.auth.getUser();
+        if (u.user?.id) q = q.eq("owner_id", u.user.id);
+      }
+      const { error } = await q;
+      if (error) throw error;
+      setRows([]);
+      toast.success("تم حذف جميع الأسئلة بنجاح 🗑️");
+      void qc.invalidateQueries({ queryKey: ["my-questions"] });
+      void qc.invalidateQueries({ queryKey: ["units"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch {
+      toast.error("تعذّر حذف الأسئلة، حاول مجددًا");
+    } finally {
+      setBusy(false);
+      setConfirmDeleteAllOpen(false);
+    }
+  }
 
   // Reset visible count on filter or search changes
   useEffect(() => {
@@ -304,12 +356,29 @@ export function QuestionList({
 
       {/* Questions Feed with 30-item progressive loading */}
       <div className="space-y-3 pt-1">
+        {/* Top actions bar: Total count and Delete All button */}
+        {rows.length > 0 && (
+          <div className="flex items-center justify-between px-1 py-1 text-xs text-muted-foreground">
+            <span>إجمالي الأسئلة: <strong className="text-foreground">{rows.length}</strong></span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              className="h-8 px-2.5 text-xs text-destructive hover:bg-destructive/10 gap-1 rounded-lg"
+              onClick={() => setConfirmDeleteAllOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>حذف جميع الأسئلة ({rows.length})</span>
+            </Button>
+          </div>
+        )}
+
         {displayed.map((q) => (
           <QuestionCard
             key={q.id}
             q={q}
             onChange={update}
-            onDelete={() => setRows(rows.filter((r) => r.id !== q.id))}
+            onDelete={() => handleDeleteQuestion(q)}
           />
         ))}
 
@@ -339,6 +408,40 @@ export function QuestionList({
           </div>
         )}
       </div>
+
+      {/* Confirmation Dialog for Delete All */}
+      <Dialog open={confirmDeleteAllOpen} onOpenChange={setConfirmDeleteAllOpen}>
+        <DialogContent className="max-w-md rounded-2xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-destructive flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              حذف جميع الأسئلة والمسودات
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            هل أنت متأكد من حذف كافة الأسئلة والمسودات ({rows.length} سؤال)؟ سيتم حذف جميع الأسئلة الخاصة بك بشكل نهائي ولن يمكن استرجاعها.
+          </p>
+          <DialogFooter className="mt-6 flex flex-row gap-2 justify-end">
+            <Button
+              variant="outline"
+              disabled={busy}
+              className="rounded-xl"
+              onClick={() => setConfirmDeleteAllOpen(false)}
+            >
+              إلغاء
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              className="rounded-xl gap-1.5"
+              onClick={handleDeleteAllQuestions}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>{busy ? "جارٍ الحذف…" : "تأكيد حذف الكل"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </fieldset>
   );
 }
