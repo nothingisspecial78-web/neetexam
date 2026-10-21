@@ -149,3 +149,54 @@ export const publishQuestions = createServerFn({ method: "POST" })
     if (updateError) throw new Error(updateError.message);
     return { ids: (published ?? []).map((q) => q.id) };
   });
+
+// Categorizes or rearranges existing questions in a unit under the user's denoted subheadings using AI.
+export const categorizeUnitQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { unitId: string; subheadings: string[] }) =>
+    z.object({
+      unitId: z.string().uuid(),
+      subheadings: z.array(z.string().trim().min(1).max(100)).min(1).max(50),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: qs, error } = await supabase
+      .from("questions")
+      .select("id, question_text, options, correct_index")
+      .eq("unit_id", data.unitId)
+      .eq("owner_id", userId);
+    if (error) throw new Error(error.message);
+    if (!qs?.length) return { updated: 0 };
+
+    const { reviewWithAI } = await import("./ai-review.server");
+    const BATCH = 20;
+    let count = 0;
+    for (let i = 0; i < qs.length; i += BATCH) {
+      const batch = qs.slice(i, i + BATCH);
+      const items = await reviewWithAI(
+        batch.map((q) => ({
+          question: q.question_text,
+          options: q.options as string[],
+          marked: q.correct_index,
+        })),
+        null,
+        data.subheadings,
+      );
+      const ordered = orderedReviewItems(items, batch.length);
+      await Promise.all(
+        batch.map((q, idx) => {
+          const it = ordered[idx];
+          if (!it?.topic) return Promise.resolve();
+          count++;
+          return supabase
+            .from("questions")
+            .update({ topic_area: it.topic.slice(0, 80) })
+            .eq("id", q.id)
+            .eq("owner_id", userId);
+        }),
+      );
+    }
+    return { updated: count };
+  });
+
