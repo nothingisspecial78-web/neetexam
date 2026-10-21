@@ -17,6 +17,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { finishMatch } from "@/lib/arena.functions";
+import { notifyLiveSync } from "@/lib/live-sync";
 import { Button } from "@/components/ui/button";
 import { ARABIC_LABELS } from "@/lib/parse-questions";
 
@@ -101,7 +102,10 @@ export function ArenaMatch({
     const tryFinish = async () => {
       try {
         const r = await finishFn({ data: { id } });
-        if (r.done) return void row.refetch();
+        if (r.done) {
+          notifyLiveSync("match_finished");
+          return void row.refetch();
+        }
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "تعذّر إنهاء المباراة");
       }

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { BottomNav } from "@/components/BottomNav";
 import { IncomingChallengeModal } from "@/components/IncomingChallengeModal";
+import { usePresence } from "@/lib/presence";
 
 // Client-only gate: unconfirmed users never get a session, so they land on /auth.
 export const Route = createFileRoute("/_authenticated")({
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   const { user } = Route.useRouteContext();
+  usePresence();
   const router = useRouterState();
   const path = router.location.pathname;
 

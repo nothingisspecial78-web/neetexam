@@ -1,5 +1,5 @@
 // Browser-safe admin counting rules (tested in admin-stats.test.ts).
-export const ONLINE_WINDOW_MS = 2 * 60_000;
+export const ONLINE_WINDOW_MS = 5 * 60_000;
 const DAY = 864e5;
 
 type Ev = { user_id: string | null; at: string };

@@ -127,6 +127,8 @@ export const unitsOptions = (userId: string) => queryOptions({
     stats.sort((x, y) => Number(!!x.owner_name) - Number(!!y.owner_name));
     return { stats, questions: combined.questions };
   },
+  staleTime: 10_000,
+  placeholderData: (prev) => prev,
 });
 
 export async function saveAnswer(a: { question_id: string; chosen_index: number | null; is_correct: boolean; time_ms: number; mode: "practice" | "test" }) {

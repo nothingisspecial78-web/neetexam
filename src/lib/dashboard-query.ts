@@ -10,4 +10,5 @@ export const dashboardOptions = (userId: string) =>
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchInterval: 60_000,
+    placeholderData: (prev) => prev,
   });

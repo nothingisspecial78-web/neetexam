@@ -28,6 +28,7 @@ import {
 import { FLAG_META, isReady, QuestionCard, type QRow } from "./QuestionCard";
 import { suggestedAnswer } from "@/lib/question-rules";
 import { publishQuestions, reviewQuestions } from "@/lib/questions.functions";
+import { notifyLiveSync } from "@/lib/live-sync";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -63,6 +64,7 @@ export function QuestionList({
       const { error } = await supabase.from("questions").delete().eq("id", q.id);
       if (error) throw error;
       setRows(rows.filter((r) => r.id !== q.id));
+      notifyLiveSync("questions_changed");
       toast.success("تم حذف السؤال بنجاح");
       void qc.invalidateQueries({ queryKey: ["my-questions"] });
       void qc.invalidateQueries({ queryKey: ["units"] });
@@ -87,6 +89,7 @@ export function QuestionList({
       const { error } = await q;
       if (error) throw error;
       setRows([]);
+      notifyLiveSync("questions_changed");
       toast.success("تم حذف جميع الأسئلة بنجاح 🗑️");
       void qc.invalidateQueries({ queryKey: ["my-questions"] });
       void qc.invalidateQueries({ queryKey: ["units"] });
@@ -229,6 +232,7 @@ export function QuestionList({
     try {
       const { ids } = await publishFn({ data: { ids: ready.map((r) => r.id) } });
       setRows(rows.map((r) => (ids.includes(r.id) ? { ...r, status: "active" } : r)));
+      notifyLiveSync("questions_published");
       void qc.invalidateQueries({ queryKey: ["my-questions"] });
       void qc.invalidateQueries({ queryKey: ["units"] });
       void qc.invalidateQueries({ queryKey: ["dashboard"] });

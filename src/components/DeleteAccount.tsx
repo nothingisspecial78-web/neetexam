@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Trash2, AlertTriangle, UserX, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteMyAccount } from "@/lib/auth.functions";
+import { notifyLiveSync } from "@/lib/live-sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +36,7 @@ export function DeleteAccount({ variant = "card" }: DeleteAccountProps) {
     setBusy(true);
     try {
       await del();
+      notifyLiveSync("account_deleted");
       toast.success("تم حذف حسابك وجميع بياناتك بنجاح");
       await qc.cancelQueries();
       qc.clear();

@@ -9,6 +9,7 @@ import { unitsOptions, pickRandomUnit, type UnitStat } from "@/lib/units";
 import { myQuestionsOptions } from "@/lib/my-questions";
 import { publishQuestions } from "@/lib/questions.functions";
 import { isReady } from "@/lib/question-rules";
+import { notifyLiveSync } from "@/lib/live-sync";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -74,6 +75,7 @@ function Units() {
       await supabase.from("questions").delete().eq("unit_id", unitToDelete.id);
       const { error } = await supabase.from("units").delete().eq("id", unitToDelete.id);
       if (error) throw error;
+      notifyLiveSync("unit_deleted");
       toast.success(`تم حذف وحدة "${unitToDelete.name}" بنجاح 🗑️`);
       await refresh();
       void qc.invalidateQueries({ queryKey: ["my-questions", user.id] });
@@ -92,6 +94,7 @@ function Units() {
       await supabase.from("questions").delete().eq("owner_id", user.id);
       const { error } = await supabase.from("units").delete().eq("owner_id", user.id);
       if (error) throw error;
+      notifyLiveSync("questions_deleted");
       toast.success("تم حذف جميع الوحدات والأسئلة بنجاح 🗑️");
       await refresh();
       void qc.invalidateQueries({ queryKey: ["my-questions", user.id] });
@@ -108,6 +111,7 @@ function Units() {
     setPublishing(true);
     try {
       const { ids } = await publishFn({ data: { ids: readyDrafts.map((q) => q.id) } });
+      notifyLiveSync("questions_published");
       toast.success(`تم نشر ${ids.length} سؤالًا وتجميعها في وحدات دراسية بنجاح! 🎉`);
       await refresh();
       void qc.invalidateQueries({ queryKey: ["my-questions", user.id] });

@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { LIVE_CHANNEL_NAME, notifyLiveSync } from "@/lib/live-sync";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -59,6 +61,37 @@ const EVENTS: Record<string, { label: string; color: string; bg: string }> = {
 function AdminPage() {
   const roleFn = useServerFn(getMyRole);
   const role = useQuery({ queryKey: ["my-role"], queryFn: () => roleFn(), staleTime: Infinity });
+  const qc = useQueryClient();
+
+  // Instant real-time background synchronization across the entire system
+  useEffect(() => {
+    if (role.data?.role !== "admin") return;
+
+    const channel = supabase
+      .channel(LIVE_CHANNEL_NAME)
+      .on("broadcast", { event: "*" }, () => {
+        void qc.invalidateQueries({ queryKey: ["admin-overview"] });
+        void qc.invalidateQueries({ queryKey: ["admin-log"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        void qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, () => {
+        void qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "questions" }, () => {
+        void qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "activity_log" }, () => {
+        void qc.invalidateQueries({ queryKey: ["admin-overview"] });
+        void qc.invalidateQueries({ queryKey: ["admin-log"] });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [qc, role.data?.role]);
 
   if (role.isPending) {
     return (
@@ -223,13 +256,28 @@ function Overview() {
   const fn = useServerFn(adminOverview);
   const banFn = useServerFn(adminSetBan);
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["admin-overview"], queryFn: () => fn(), refetchInterval: 15_000 });
+  const q = useQuery({
+    queryKey: ["admin-overview"],
+    queryFn: () => fn(),
+    refetchInterval: 2500,
+    staleTime: 1000,
+    placeholderData: (prev) => prev,
+  });
   const [search, setSearch] = useState("");
 
-  if (q.isPending) {
-    return <p className="py-12 text-center text-sm text-muted-foreground animate-pulse">جارٍ تحميل إحصاءات الإدارة…</p>;
+  if (q.isPending && !q.data) {
+    return (
+      <div className="space-y-4 py-6 animate-pulse" dir="rtl">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 rounded-2xl bg-card border border-border/80" />
+          ))}
+        </div>
+        <div className="h-44 rounded-2xl bg-card border border-border/80" />
+      </div>
+    );
   }
-  if (q.isError || !q.data) {
+  if (q.isError && !q.data) {
     return <p className="py-12 text-center text-sm text-destructive">تعذّر تحميل بيانات لوحة الإدارة.</p>;
   }
 
@@ -239,7 +287,9 @@ function Overview() {
     try {
       await banFn({ data: { userId: id, banned } });
       toast.success(banned ? "تم حظر المستخدم" : "تم رفع الحظر عن المستخدم");
+      notifyLiveSync(banned ? "admin_ban" : "admin_unban");
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-log"] });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -465,7 +515,9 @@ function LogTab() {
   const q = useQuery({
     queryKey: ["admin-log", filter],
     queryFn: () => fn({ data: filter }),
-    refetchInterval: live ? 3000 : false,
+    refetchInterval: live ? 2000 : false,
+    staleTime: 1000,
+    placeholderData: (prev) => prev,
   });
 
   const users = ov.data?.users ?? [];
