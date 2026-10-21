@@ -555,12 +555,18 @@ BEGIN
   END IF;
 
   SELECT array_agg(sub.id) INTO q_ids FROM (
-    SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 50
+    SELECT id FROM (
+      SELECT DISTINCT ON (COALESCE(content_hash, id::text)) id, random() as rnd
+      FROM public.questions
+      WHERE status = 'active' AND correct_index IS NOT NULL AND jsonb_array_length(options) >= 2
+    ) u
+    ORDER BY u.rnd
+    LIMIT 50
   ) sub;
 
   IF q_ids IS NULL OR array_length(q_ids, 1) < 1 THEN
     SELECT array_agg(sub2.id) INTO q_ids FROM (
-      SELECT id FROM public.questions ORDER BY random() LIMIT 50
+      SELECT id FROM public.questions WHERE correct_index IS NOT NULL AND jsonb_array_length(options) >= 2 ORDER BY random() LIMIT 50
     ) sub2;
   END IF;
 
@@ -586,12 +592,18 @@ BEGIN
   SELECT display_name INTO friend_name FROM public.profiles WHERE id = _friend;
 
   SELECT array_agg(sub.id) INTO q_ids FROM (
-    SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 50
+    SELECT id FROM (
+      SELECT DISTINCT ON (COALESCE(content_hash, id::text)) id, random() as rnd
+      FROM public.questions
+      WHERE status = 'active' AND correct_index IS NOT NULL AND jsonb_array_length(options) >= 2
+    ) u
+    ORDER BY u.rnd
+    LIMIT 50
   ) sub;
 
   IF q_ids IS NULL OR array_length(q_ids, 1) < 1 THEN
     SELECT array_agg(sub2.id) INTO q_ids FROM (
-      SELECT id FROM public.questions ORDER BY random() LIMIT 50
+      SELECT id FROM public.questions WHERE correct_index IS NOT NULL AND jsonb_array_length(options) >= 2 ORDER BY random() LIMIT 50
     ) sub2;
   END IF;
 
@@ -659,8 +671,16 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  target_qid := m.question_ids[curr_idx + 1];
-  SELECT * INTO q FROM public.questions WHERE id = target_qid;
+  -- Ensure valid non-corrupted question is fetched
+  WHILE curr_idx < array_length(m.question_ids, 1) LOOP
+    target_qid := m.question_ids[curr_idx + 1];
+    SELECT * INTO q FROM public.questions WHERE id = target_qid;
+    IF q.id IS NOT NULL AND q.question_text IS NOT NULL AND jsonb_array_length(q.options) >= 2 THEN
+      EXIT;
+    END IF;
+    curr_idx := curr_idx + 1;
+  END LOOP;
+
   IF q.id IS NULL THEN RETURN NULL; END IF;
 
   RETURN jsonb_build_object(

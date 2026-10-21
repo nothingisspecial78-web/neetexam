@@ -32,31 +32,58 @@ export const finishMatch = createServerFn({ method: "POST" })
     return { done: true };
   });
 
-// Helper to pick randomly from all users' active questions
+// Helper to pick randomly from all users' active questions with no duplicates
 async function pickRandomQuestions(supabaseAdmin: any, count = 50): Promise<string[]> {
-  // 1. Fetch all active questions across all users
+  // 1. Fetch all active questions with non-null answers from all users
   let { data: questions } = await supabaseAdmin
     .from("questions")
-    .select("id")
-    .eq("status", "active");
+    .select("id, content_hash, question_text, correct_index, options")
+    .eq("status", "active")
+    .not("correct_index", "is", null);
 
   if (!questions || questions.length === 0) {
-    const all = await supabaseAdmin.from("questions").select("id");
+    const all = await supabaseAdmin
+      .from("questions")
+      .select("id, content_hash, question_text, correct_index, options")
+      .not("correct_index", "is", null);
     questions = all.data ?? [];
   }
 
-  if (!questions || questions.length === 0) {
-    throw new Error("لا توجد أسئلة متاحة للمبارزة حالياً، يرجى نشر أسئلة أولاً");
+  // 2. Validate valid options array (at least 2 options) and non-empty question text
+  const valid = (questions || []).filter(
+    (q: any) =>
+      q.correct_index !== null &&
+      q.correct_index !== undefined &&
+      Array.isArray(q.options) &&
+      q.options.length >= 2 &&
+      (q.question_text || "").trim().length > 0
+  );
+
+  if (valid.length === 0) {
+    throw new Error("لا توجد أسئلة صالحة للمبارزة حالياً، يرجى نشر أسئلة أولاً");
   }
 
-  // 2. Fisher-Yates shuffle across the entire pool
-  const shuffled = [...questions];
-  for (let i = shuffled.length - 1; i > 0; i--) {
+  // 3. Deduplicate by content_hash or question_text so each question in the match is unique
+  const uniquePoolMap = new Map<string, string>();
+  for (const q of valid) {
+    const key = (q.content_hash || q.question_text.trim()).toLowerCase();
+    if (!uniquePoolMap.has(key)) {
+      uniquePoolMap.set(key, q.id);
+    }
+  }
+
+  const pool = Array.from(uniquePoolMap.values());
+
+  // 4. Thorough Fisher-Yates shuffle across the unique pool
+  for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    const temp = pool[i]!;
+    pool[i] = pool[j]!;
+    pool[j] = temp;
   }
 
-  return shuffled.slice(0, count).map((q) => q.id);
+  // 5. Return exactly count questions (both competitors receive this exact list in this exact order)
+  return pool.slice(0, count);
 }
 
 // Joins an existing waiting match or creates a new random match with randomized questions from all users
