@@ -498,8 +498,16 @@ BEGIN
   INTO m
   FROM public.matches
   WHERE (player_a = auth.uid() OR player_b = auth.uid())
-    AND status IN ('waiting', 'invited', 'active', 'finishing')
-  ORDER BY created_at DESC
+    AND status IN ('active', 'finishing', 'waiting', 'invited')
+  ORDER BY 
+    CASE status
+      WHEN 'active' THEN 1
+      WHEN 'finishing' THEN 2
+      WHEN 'invited' THEN 3
+      WHEN 'waiting' THEN 4
+      ELSE 5
+    END ASC,
+    created_at DESC
   LIMIT 1;
 
   IF m.id IS NULL THEN
@@ -521,12 +529,17 @@ DECLARE
 BEGIN
   SELECT display_name INTO my_name FROM public.profiles WHERE id = auth.uid();
 
+  -- Clean up previous waiting matches by this user
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE status = 'waiting' AND player_a = auth.uid();
+
   -- Cancel expired active matches
   UPDATE public.matches
   SET status = 'cancelled'
   WHERE status = 'active' AND ends_at < now() - interval '15 seconds';
 
-  -- Cancel stale waiting matches
+  -- Cancel stale waiting matches older than 45s
   UPDATE public.matches
   SET status = 'cancelled'
   WHERE status = 'waiting' AND created_at < now() - interval '45 seconds';
@@ -556,11 +569,12 @@ BEGIN
 
   SELECT array_agg(sub.id) INTO q_ids FROM (
     SELECT id FROM (
-      SELECT DISTINCT ON (COALESCE(content_hash, id::text)) id, random() as rnd
+      SELECT DISTINCT ON (COALESCE(content_hash, id::text)) id
       FROM public.questions
       WHERE status = 'active' AND correct_index IS NOT NULL AND jsonb_array_length(options) >= 2
+      ORDER BY COALESCE(content_hash, id::text)
     ) u
-    ORDER BY u.rnd
+    ORDER BY random()
     LIMIT 50
   ) sub;
 
@@ -593,11 +607,11 @@ BEGIN
 
   SELECT array_agg(sub.id) INTO q_ids FROM (
     SELECT id FROM (
-      SELECT DISTINCT ON (COALESCE(content_hash, id::text)) id, random() as rnd
+      SELECT DISTINCT ON (COALESCE(content_hash, id::text)) id
       FROM public.questions
       WHERE status = 'active' AND correct_index IS NOT NULL AND jsonb_array_length(options) >= 2
+      ORDER BY COALESCE(content_hash, id::text)
     ) u
-    ORDER BY u.rnd
     LIMIT 50
   ) sub;
 

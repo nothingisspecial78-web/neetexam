@@ -54,19 +54,37 @@ function Arena() {
     queryKey: ["arena-current", user.id],
     queryFn: async () => {
       const t = Date.now();
+
+      // 1. Always prioritize any ongoing active or finishing match for this user
+      const { data: activeMatches } = await supabase
+        .from("matches")
+        .select("*")
+        .or(`player_a.eq.${user.id},player_b.eq.${user.id}`)
+        .in("status", ["active", "finishing"])
+        .gt("ends_at", new Date(Date.now() - 5000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (activeMatches && activeMatches[0]) {
+        const act = activeMatches[0];
+        const m = { ...act, total: (act.question_ids || []).length };
+        return { match: m as Match, offset: 0 };
+      }
+
+      // 2. Otherwise query arena_current RPC
       const { data, error } = await supabase.rpc("arena_current");
       if (error) throw error;
       const d = data as unknown as { now: string; match: Match | null };
       let currentMatch = d.match;
 
-      // Fallback: Also check matches table for any pending/invited challenge match
+      // 3. Fallback: Also check matches table for any pending/invited challenge or fresh waiting match
       if (!currentMatch) {
-        const since = new Date(Date.now() - 65_000).toISOString();
+        const since = new Date(Date.now() - 45_000).toISOString();
         const { data: inv } = await supabase
           .from("matches")
           .select("*")
           .or(`player_a.eq.${user.id},player_b.eq.${user.id}`)
-          .in("status", ["invited", "waiting", "active"])
+          .in("status", ["invited", "waiting"])
           .gt("created_at", since)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -80,8 +98,33 @@ function Arena() {
 
       return { match: currentMatch, offset: new Date(d.now).getTime() - (t + Date.now()) / 2 };
     },
-    refetchInterval: viewId ? false : 2000,
+    refetchInterval: viewId ? false : 1500,
   });
+
+  // Realtime subscription to instantly transition when paired or match changes
+  useEffect(() => {
+    const channel = supabase
+      .channel(`arena-matches-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "matches",
+        },
+        (payload: any) => {
+          const m = payload.new || payload.old;
+          if (m && (m.player_a === user.id || m.player_b === user.id)) {
+            void cur.refetch();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const friends = useQuery({
     queryKey: ["arena-friends", user.id],
