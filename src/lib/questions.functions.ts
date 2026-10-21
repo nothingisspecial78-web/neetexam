@@ -27,15 +27,58 @@ export const saveDrafts = createServerFn({ method: "POST" })
         content_hash: await questionHash(q),
       })),
     );
-    const { data: inserted, error: e2 } = await supabase
+    // Filter duplicates within the uploaded file itself
+    const uniqueMap = new Map<string, (typeof rows)[0]>();
+    for (const row of rows) {
+      if (!uniqueMap.has(row.content_hash)) {
+        uniqueMap.set(row.content_hash, row);
+      }
+    }
+    const uniqueFileRows = Array.from(uniqueMap.values());
+
+    // Deduplicate against the student's existing question bank
+    const fileHashes = uniqueFileRows.map((r) => r.content_hash);
+    const { data: existingRows } = await supabase
       .from("questions")
-      .upsert(rows, { onConflict: "owner_id,content_hash", ignoreDuplicates: true })
-      .select("id");
-    if (e2) throw new Error(e2.message);
-    const count = inserted?.length ?? 0;
-    const { error: countError } = await supabase.from("uploads").update({ question_count: count }).eq("id", up.id);
+      .select("content_hash")
+      .eq("owner_id", userId)
+      .in("content_hash", fileHashes);
+
+    const existingHashSet = new Set((existingRows ?? []).map((r) => r.content_hash));
+    const newRowsToInsert = uniqueFileRows.filter((r) => !existingHashSet.has(r.content_hash));
+
+    let inserted: { id: string }[] = [];
+    if (newRowsToInsert.length > 0) {
+      const { data: ins, error: insErr } = await supabase
+        .from("questions")
+        .insert(newRowsToInsert)
+        .select("id");
+
+      if (insErr) {
+        // Fallback to upsert if insert hits conflict
+        const { data: ups, error: upsErr } = await supabase
+          .from("questions")
+          .upsert(newRowsToInsert, { onConflict: "owner_id,content_hash", ignoreDuplicates: true })
+          .select("id");
+        if (upsErr) throw new Error(insErr.message || upsErr.message);
+        inserted = ups ?? [];
+      } else {
+        inserted = ins ?? [];
+      }
+    }
+
+    const count = inserted.length;
+    const { error: countError } = await supabase
+      .from("uploads")
+      .update({ question_count: count })
+      .eq("id", up.id);
     if (countError) throw new Error(countError.message);
-    return { uploadId: up.id, ids: (inserted ?? []).map((r) => r.id), duplicates: rows.length - count };
+
+    return {
+      uploadId: up.id,
+      ids: inserted.map((r) => r.id),
+      duplicates: rows.length - count,
+    };
   });
 
 // AI-reviews up to 20 of the student's draft questions and stores the verdict (never changes the answer).

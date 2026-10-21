@@ -43,8 +43,10 @@ CREATE TABLE IF NOT EXISTS public.units (
   owner_id uuid DEFAULT auth.uid() NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   name text NOT NULL,
   topic_area text NOT NULL,
-  created_at timestamptz DEFAULT now() NOT NULL
+  created_at timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT units_owner_topic_unique UNIQUE (owner_id, topic_area)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS units_owner_topic_idx ON public.units (owner_id, topic_area);
 
 -- Questions
 CREATE TABLE IF NOT EXISTS public.questions (
@@ -62,8 +64,10 @@ CREATE TABLE IF NOT EXISTS public.questions (
   topic_area text,
   content_hash text NOT NULL,
   explanation text,
-  created_at timestamptz DEFAULT now() NOT NULL
+  created_at timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT questions_owner_content_hash_unique UNIQUE (owner_id, content_hash)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS questions_owner_hash_idx ON public.questions (owner_id, content_hash);
 
 -- Test Results
 CREATE TABLE IF NOT EXISTS public.test_results (
@@ -814,3 +818,19 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS friendships_responded ON public.friendships;
 CREATE TRIGGER friendships_responded BEFORE UPDATE ON public.friendships FOR EACH ROW EXECUTE FUNCTION public.stamp_friend_response();
+
+-- Idempotent constraint additions for existing tables
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'questions_owner_content_hash_unique'
+  ) THEN
+    ALTER TABLE public.questions ADD CONSTRAINT questions_owner_content_hash_unique UNIQUE (owner_id, content_hash);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'units_owner_topic_unique'
+  ) THEN
+    ALTER TABLE public.units ADD CONSTRAINT units_owner_topic_unique UNIQUE (owner_id, topic_area);
+  END IF;
+END $$;
+
