@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Search,
@@ -12,6 +12,7 @@ import {
   HelpCircle,
   Clock,
   Layers,
+  ArrowDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 
 const FILTERS = ["all", "clean", "suggestion", "wrong_answer", "no_answer", "pending"] as const;
+const PAGE_SIZE = 30;
 
 export function QuestionList({
   rows,
@@ -36,11 +38,19 @@ export function QuestionList({
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
   const [term, setTerm] = useState("");
   const [busy, setBusy] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const observerTarget = useRef<HTMLDivElement | null>(null);
+
   const publishFn = useServerFn(publishQuestions);
   const reviewFn = useServerFn(reviewQuestions);
   const qc = useQueryClient();
 
   const update = (q: QRow) => setRows(rows.map((r) => (r.id === q.id ? q : r)));
+
+  // Reset visible count on filter or search changes
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filter, term]);
 
   const shown = useMemo(
     () =>
@@ -52,6 +62,26 @@ export function QuestionList({
       ),
     [rows, filter, term],
   );
+
+  const displayed = shown.slice(0, visibleCount);
+  const hasMore = visibleCount < shown.length;
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, shown.length));
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    const el = observerTarget.current;
+    if (el) observer.observe(el);
+    return () => {
+      if (el) observer.unobserve(el);
+    };
+  }, [hasMore, shown.length]);
 
   const count = (f: string) =>
     rows.filter((r) => (f === "pending" ? r.ai_flag === null : r.ai_flag === f)).length;
@@ -272,9 +302,9 @@ export function QuestionList({
         </div>
       )}
 
-      {/* Questions Feed */}
+      {/* Questions Feed with 30-item progressive loading */}
       <div className="space-y-3 pt-1">
-        {shown.map((q) => (
+        {displayed.map((q) => (
           <QuestionCard
             key={q.id}
             q={q}
@@ -282,6 +312,24 @@ export function QuestionList({
             onDelete={() => setRows(rows.filter((r) => r.id !== q.id))}
           />
         ))}
+
+        {hasMore && (
+          <div ref={observerTarget} className="py-6 flex flex-col items-center justify-center gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-primary animate-ping" />
+              <span>يتم عرض {displayed.length} من أصل {shown.length} سؤالاً (يتم التحميل تلقائيًا مع التمرير)</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl text-xs text-muted-foreground hover:text-foreground gap-1.5 h-9"
+              onClick={() => setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, shown.length))}
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+              <span>تحميل المزيد ({shown.length - visibleCount} متبقٍ)</span>
+            </Button>
+          </div>
+        )}
 
         {shown.length === 0 && (
           <div className="rounded-2xl border border-dashed border-border/80 bg-card p-10 text-center space-y-2">

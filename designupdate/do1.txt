@@ -1,0 +1,13 @@
+currently when friend request to another friend for competition, then this request currently only show when that user refresh, not like that i want, but when he sent request then current time the request must be shown as a notification bar, if he accepted then enter this competition, if he rejected then competition will rejected.
+
+
+and a user one time logined in a device, then when he open the link second time then didn't ask them to sign in again.
+
+and make the email : abdullaarimbra1027@gmail.com as the admin email.
+and this email password is : abdu@1O27.
+
+and in dashboard, i noticed when change the navigation suddenly to the dashboard then this show as loading. so the loading must be continue it backend, but in frontent this loading and taking new updation are not be visible in frontent, after loading the result change justly, not more noticed it anyone in first look.
+
+and i added this app icon in designupdate folder as the NEET Arabic Literature App Icon.png. make this as the icon of this app.
+
+in this you can see the lovable folder, is it require for our code. can you do completely free from locable locksystem.

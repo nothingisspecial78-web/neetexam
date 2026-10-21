@@ -39,7 +39,7 @@ export function computeUnitStats(units: { id: string; name: string; owner_id?: s
       best: best.get(u.id) ?? null,
       status,
     };
-  }).filter((u) => u.total > 0);
+  }).filter((u) => !u.owner_name || u.total > 0);
 }
 
 // Weighted toward low accuracy: weight = 101 - accuracy (unpracticed counts as 0%).

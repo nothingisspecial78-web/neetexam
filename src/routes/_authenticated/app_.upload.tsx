@@ -1,8 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useLocation } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Copy, FileUp, CheckCircle2, AlertTriangle, XCircle, HelpCircle, CloudUpload } from "lucide-react";
+import { Copy, FileUp, CheckCircle2, AlertTriangle, XCircle, HelpCircle, CloudUpload, BookOpen, Layers } from "lucide-react";
 import { CONVERT_PROMPT } from "@/lib/convert-prompt";
 import { supabase } from "@/integrations/supabase/client";
 import { extractText } from "@/lib/extract-text";
@@ -40,16 +40,39 @@ const STEPS = ["رفع الملف", "استخراج الأسئلة", "المرا
 
 function UploadPage() {
   const { user } = Route.useRouteContext();
+  const location = useLocation();
+  const searchObj = (location.search ?? {}) as Record<string, unknown>;
+  const unitId = typeof searchObj["unitId"] === "string"
+    ? (searchObj["unitId"] as string)
+    : (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("unitId") || undefined : undefined);
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const save = useServerFn(saveDrafts);
   const review = useServerFn(reviewQuestions);
   const [hint, setHint] = useState("");
+  const [subheadings, setSubheadings] = useState("");
+  const [targetUnit, setTargetUnit] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [rows, setRows] = useState<QRow[] | null>(null);
   const [step, setStep] = useState(0);   // 0=idle, 1=extract, 2=review, 3=done
   const [dragOver, setDragOver] = useState(false);
   const readAI = useServerFn(readQuestionsWithAI);
+
+  useEffect(() => {
+    if (!unitId) {
+      setTargetUnit(null);
+      return;
+    }
+    supabase
+      .from("units")
+      .select("id, name")
+      .eq("id", unitId)
+      .single()
+      .then(({ data }) => {
+        if (data) setTargetUnit(data);
+      });
+  }, [unitId]);
 
   async function readWithAI(text: string): Promise<ParsedQuestion[]> {
     setBusy("الملف غير مرتب، يقرؤه الذكاء الاصطناعي…");
@@ -96,21 +119,39 @@ function UploadPage() {
       if (!qs.length) { setBusy(null); setStep(0); return void toast.error("لم نجد أسئلة اختيار من متعدد في الملف"); }
       setProgress(0);
 
-      const topicHint = hint.trim() || null;
+      const topicHint = (targetUnit?.name || hint).trim() || null;
+      const parsedSubheadings = subheadings
+        .split(/[,،\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       const { uploadId, ids, duplicates } = await save({
-        data: { fileName: file.name, fileType: fileType ?? "md", topicHint, questions: qs },
+        data: {
+          fileName: file.name,
+          fileType: fileType ?? "md",
+          topicHint,
+          unitId: unitId ?? undefined,
+          questions: qs,
+        },
       });
       toast.success(`وجدنا ${qs.length} سؤالًا${duplicates ? ` — حُذف ${duplicates} مكرر` : ""}`);
       if (!ids.length) { setBusy(null); setStep(0); return; }
 
       setStep(2);
-      setBusy("التدقيق بالذكاء الاصطناعي…");
+      setBusy("التدقيق بالذكاء الاصطناعي والتصنيف…");
       const batches: string[][] = [];
       for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
       let done = 0;
       for (const batch of batches) {
-        try { await review({ data: { ids: batch, topicHint } }); }
-        catch (e) {
+        try {
+          await review({
+            data: {
+              ids: batch,
+              topicHint,
+              subheadings: parsedSubheadings.length ? parsedSubheadings : undefined,
+            },
+          });
+        } catch (e) {
           toast.error(e instanceof Error ? e.message : "تعذّر التدقيق، راجع الأسئلة يدويًا");
           break;
         }
@@ -230,16 +271,66 @@ function UploadPage() {
               </Button>
             </div>
 
+            {/* Target unit indicator if uploading directly into a unit */}
+            {unitId && (
+              <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 flex items-center justify-between shadow-xs animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <BookOpen className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-semibold text-primary uppercase tracking-wider">
+                      رفع مباشر إلى الوحدة
+                    </span>
+                    <p className="font-bold text-foreground text-sm">
+                      {targetUnit ? targetUnit.name : "جارٍ تحديد الوحدة…"}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => navigate({ to: "/app/upload" })}
+                >
+                  إلغاء التحديد
+                </Button>
+              </div>
+            )}
+
             {/* Topic hint input */}
+            {!unitId && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">موضوع الملف (اختياري)</label>
+                <Input
+                  id="topic-hint-input"
+                  placeholder="مثال: الشعر الجاهلي"
+                  className="h-12 rounded-xl"
+                  value={hint}
+                  onChange={(e) => setHint(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Subheadings categorization input */}
             <div>
-              <label className="mb-1.5 block text-sm font-medium">موضوع الملف (اختياري)</label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-sm font-medium flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-primary" />
+                  العناوين الفرعية للتصنيف الذكي (اختياري)
+                </label>
+                <span className="text-[11px] text-muted-foreground">مفصولة بفواصل</span>
+              </div>
               <Input
-                id="topic-hint-input"
-                placeholder="مثال: الشعر الجاهلي"
+                id="subheadings-input"
+                placeholder="مثال: شعر المعلقات, الصعاليك, النثر الجاهلي, شعراء الغزل"
                 className="h-12 rounded-xl"
-                value={hint}
-                onChange={(e) => setHint(e.target.value)}
+                value={subheadings}
+                onChange={(e) => setSubheadings(e.target.value)}
               />
+              <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                اكتب العناوين الفرعية التي تريد تصنيف الأسئلة تحتها. سيقوم الذكاء الاصطناعي بتصنيف كل سؤال بدقّة تحت العنوان الأنسب منها داخل هذه الوحدة.
+              </p>
             </div>
 
             {/* Drop zone */}

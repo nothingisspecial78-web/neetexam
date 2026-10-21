@@ -10,6 +10,7 @@ import {
   XCircle,
   Clock,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import { unitsOptions, shuffle, shuffleOptions, saveAnswer, saveRun } from "@/lib/units";
 import { AppHeader } from "@/components/AppHeader";
@@ -100,13 +101,28 @@ function Practice() {
 
       <main className="mx-auto max-w-lg px-4 py-6">
         {!run.qs.length ? (
-          <div className="rounded-2xl border border-dashed border-border/80 bg-card p-8 text-center space-y-4">
+          <div className="rounded-2xl border border-dashed border-border/80 bg-card p-8 text-center space-y-4 animate-scale-in">
             <BookOpen className="mx-auto h-12 w-12 text-muted-foreground/40" />
-            <h2 className="font-display text-lg font-bold text-foreground">لا توجد أسئلة متاحة في هذه الوحدة</h2>
-            <p className="text-xs text-muted-foreground">
-              تأكد من نشر أسئلة في هذه الوحدة أو ارفع ملفًا جديدًا يحتوي على هذا الموضوع.
+            <h2 className="font-display text-lg font-bold text-foreground">لا توجد أسئلة متاحة في هذه الوحدة بعد</h2>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              يمكنك رفع ملف أسئلة (md) مخصص لهذه الوحدة مباشرة، وسيتم تدقيقها وتصنيفها بالذكاء الاصطناعي وفق عناوينك الفرعية.
             </p>
-            <Button onClick={() => navigate({ to: "/app/units" })}>العودة للوحدات</Button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+              <Button
+                className="gap-2 rounded-xl h-11 w-full sm:w-auto font-semibold shadow-xs"
+                onClick={() => navigate({ to: "/app/upload", search: { unitId } as any })}
+              >
+                <Upload className="h-4 w-4" />
+                ارفع ملف md لهذه الوحدة
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-xl h-11 w-full sm:w-auto"
+                onClick={() => navigate({ to: "/app/units" })}
+              >
+                العودة للوحدات
+              </Button>
+            </div>
           </div>
         ) : result ? (
           /* Result Celebration View */

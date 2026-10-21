@@ -34,12 +34,23 @@ const INSTRUCTIONS = `أنت مدقّق أكاديمي موثوق وموسوعي
 export async function reviewWithAI(
   questions: { question: string; options: string[]; marked: number | null }[],
   topicHint: string | null,
+  subheadings?: string[],
 ) {
   const { model, gateway } = getAiConfig();
   const payload = questions.map((q, i) => ({ i, ...q }));
+
+  const subheadingsInstruction =
+    subheadings && subheadings.length > 0
+      ? `\nقاعدة إلزامية لتصنيف الأسئلة (topic): حدد المستخدم العناوين الفرعية التالية: [${subheadings.join("، ")}]. يجب عليك حتماً تصنيف كل سؤال تحت أحد هذه العناوين الفرعية فقط وبنفس صياغتها، باختيار العنوان الأنسب لكل سؤال.`
+      : "";
+
   const result = streamText({
     model,
-    system: AI_GUARD + INSTRUCTIONS + (topicHint ? `\nتلميح الموضوع من الطالب: ${topicHint}` : ""),
+    system:
+      AI_GUARD +
+      INSTRUCTIONS +
+      (topicHint ? `\nتلميح الموضوع من الطالب: ${topicHint}` : "") +
+      subheadingsInstruction,
     prompt: JSON.stringify(payload),
     output: Output.object({ schema }),
     maxRetries: 1,

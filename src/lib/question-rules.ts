@@ -4,6 +4,8 @@ export const draftInputSchema = z.object({
   fileName: z.string().trim().min(1).max(200),
   fileType: z.enum(["txt", "md", "pdf"]),
   topicHint: z.string().trim().max(200).nullable(),
+  unitId: z.string().uuid().nullable().optional(),
+  subheadings: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
   questions: z.array(z.object({
     question: z.string().trim().min(1).max(4000),
     options: z.array(z.string().trim().min(1).max(1000)).min(2).max(6),
@@ -14,6 +16,7 @@ export const draftInputSchema = z.object({
 export const reviewInputSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(20),
   topicHint: z.string().trim().max(200).nullable(),
+  subheadings: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
 });
 
 export function isReady(q: { correct_index: number | null; options: unknown; ai_flag: string | null }) {

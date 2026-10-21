@@ -21,6 +21,7 @@ export const saveDrafts = createServerFn({ method: "POST" })
       data.questions.map(async (q) => ({
         owner_id: userId,
         upload_id: up.id,
+        unit_id: data.unitId ?? null,
         question_text: q.question.slice(0, 4000),
         options: q.options.slice(0, 6).map((o) => o.slice(0, 1000)),
         correct_index: q.correct,
@@ -98,6 +99,7 @@ export const reviewQuestions = createServerFn({ method: "POST" })
     const items = await reviewWithAI(
       qs.map((q) => ({ question: q.question_text, options: q.options as string[], marked: q.correct_index })),
       data.topicHint,
+      data.subheadings,
     );
     const ordered = orderedReviewItems(items, qs.length);
     const updates = await Promise.all(
