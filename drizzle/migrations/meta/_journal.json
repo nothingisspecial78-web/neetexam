@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792567651116,
+      "tag": "0000_admin_panel_and_profile_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792568256810,
+      "tag": "0001_stage8_schema_alignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792568473376,
+      "tag": "0002_stage9_security_limits",
+      "breakpoints": true
+    }
+  ]
+}
