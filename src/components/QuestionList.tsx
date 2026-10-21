@@ -57,8 +57,29 @@ export function QuestionList({
     rows.filter((r) => (f === "pending" ? r.ai_flag === null : r.ai_flag === f)).length;
 
   const noAnswer = rows.filter((r) => r.ai_flag === "no_answer" && suggestedAnswer(r) !== null);
+  const wrongAnswer = rows.filter((r) => r.status === "draft" && r.ai_flag === "wrong_answer" && r.correct_index !== null);
   const ready = rows.filter((r) => r.status === "draft" && isReady(r));
   const pending = rows.filter((r) => r.status === "draft" && r.ai_flag === null);
+
+  async function acceptAllUserAnswers() {
+    if (busy || !wrongAnswer.length) return;
+    setBusy(true);
+    try {
+      const ids = wrongAnswer.map((r) => r.id);
+      const { error } = await supabase
+        .from("questions")
+        .update({ ai_flag: "clean" })
+        .in("id", ids);
+      if (error) throw error;
+      setRows(rows.map((r) => (ids.includes(r.id) ? { ...r, ai_flag: "clean" } : r)));
+      toast.success(`تم تأكيد صحة إجاباتك لـ ${ids.length} سؤالًا بنجاح! 🎉`);
+      void qc.invalidateQueries({ queryKey: ["my-questions"] });
+    } catch {
+      toast.error("تعذّر حفظ التعديلات");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function retryReview() {
     if (busy || !pending.length) return;
@@ -200,6 +221,26 @@ export function QuestionList({
           >
             <Sparkles className="h-3.5 w-3.5" />
             أجب عنها كلها تلقائيًا
+          </Button>
+        </div>
+      )}
+
+      {/* Banner: Approve All User Answers */}
+      {wrongAnswer.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs leading-relaxed text-amber-950 dark:text-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-amber-600 shrink-0" />
+            <span>
+              هناك <strong>{wrongAnswer.length}</strong> سؤالاً اعتبرها التدقيق بحاجة لمراجعة. إذا كانت إجاباتك الأصلية في الملف صحيحة ومؤكدة، يمكنك اعتمادها بنقرة واحدة:
+            </span>
+          </div>
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl self-start sm:self-auto shrink-0 gap-1.5"
+            onClick={acceptAllUserAnswers}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            اعتماد جميع إجاباتي الأصلية ({wrongAnswer.length})
           </Button>
         </div>
       )}

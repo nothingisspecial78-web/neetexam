@@ -22,7 +22,7 @@ export function getAiConfig() {
 
   const modelName =
     process.env["AI_MODEL"] ||
-    (isOpenRouter ? "openai/gpt-4o-mini" : "openai/gpt-6-astra");
+    (isOpenRouter ? "deepseek/deepseek-chat" : "openai/gpt-6-astra");
 
   const gateway = createLovableAiGatewayRunIdFetch();
 

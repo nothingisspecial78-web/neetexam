@@ -306,11 +306,11 @@ export function QuestionCard({
             )}
             <Button
               size="sm"
-              variant="outline"
-              className="text-xs h-8"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 gap-1.5"
               onClick={() => save({ ai_flag: "clean" })}
             >
-              أبقِ إجابتي
+              <Check className="h-3.5 w-3.5" />
+              إجابتي صحيحة ({L(q.correct_index)})
             </Button>
             <Button
               size="sm"
