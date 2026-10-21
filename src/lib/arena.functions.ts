@@ -31,3 +31,148 @@ export const finishMatch = createServerFn({ method: "POST" })
     if (e2) { console.error("settle_match failed", e2.message); throw new Error("تعذّر إنهاء المباراة، حاول مجددًا"); }
     return { done: true };
   });
+
+// Challenges a friend to a head-to-head competition match.
+export const challengeFriend = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { friendId: string; duration?: number }) =>
+    z.object({
+      friendId: z.string().uuid(),
+      duration: z.number().int().min(30).max(300).optional(),
+    }).parse(d)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch user display names
+    const [pA, pB] = await Promise.all([
+      supabaseAdmin.from("profiles").select("display_name").eq("id", userId).single(),
+      supabaseAdmin.from("profiles").select("display_name").eq("id", data.friendId).single(),
+    ]);
+
+    if (!pB.data) throw new Error("المستخدم غير موجود");
+
+    // 2. Fetch questions: active first, fallback to all questions
+    let { data: questions } = await supabaseAdmin
+      .from("questions")
+      .select("id")
+      .eq("status", "active")
+      .limit(20);
+
+    if (!questions || questions.length === 0) {
+      const all = await supabaseAdmin.from("questions").select("id").limit(20);
+      questions = all.data ?? [];
+    }
+
+    if (!questions || questions.length === 0) {
+      throw new Error("لا توجد أسئلة متاحة للمبارزة حالياً، يرجى نشر أسئلة أولاً");
+    }
+
+    // Shuffle questions
+    const shuffled = [...questions].sort(() => Math.random() - 0.5);
+    const qIds = shuffled.map((q) => q.id);
+
+    // 3. Cancel any previous pending challenges involving this user
+    await supabaseAdmin
+      .from("matches")
+      .update({ status: "cancelled" })
+      .in("status", ["waiting", "invited"])
+      .or(`player_a.eq.${userId},player_b.eq.${userId}`);
+
+    // 4. Create new challenge match with status 'invited'
+    const duration = data.duration ?? 60;
+    const { data: newMatch, error } = await supabaseAdmin
+      .from("matches")
+      .insert({
+        kind: "challenge",
+        status: "invited",
+        player_a: userId,
+        player_b: data.friendId,
+        a_name: pA.data?.display_name ?? "متحدٍ",
+        b_name: pB.data?.display_name ?? "صديق",
+        duration_s: duration,
+        question_ids: qIds,
+      })
+      .select("id")
+      .single();
+
+    if (error || !newMatch) {
+      console.error("challengeFriend insert error:", error);
+      throw new Error("تعذّر إرسال التحدي");
+    }
+
+    return { matchId: newMatch.id };
+  });
+
+// Accepts or declines an incoming challenge invitation.
+export const respondChallenge = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { matchId: string; accept: boolean }) =>
+    z.object({ matchId: z.string().uuid(), accept: z.boolean() }).parse(d)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: m, error } = await supabaseAdmin
+      .from("matches")
+      .select("*")
+      .eq("id", data.matchId)
+      .maybeSingle();
+
+    if (error || !m) throw new Error("المباراة غير موجودة");
+
+    if (m.player_b !== userId && m.player_a !== userId) {
+      throw new Error("غير مصرّح لك بالرد على هذه الدعوة");
+    }
+
+    if (data.accept) {
+      if (m.player_b !== userId) throw new Error("المرسل لا يمكنه قبول دعوته بنفسه");
+      if (m.status !== "invited" && m.status !== "waiting") {
+        throw new Error("انتهت صلاحية الدعوة أو تم إلغاؤها");
+      }
+
+      const startsAt = new Date(Date.now() + 3000);
+      const endsAt = new Date(Date.now() + 3000 + (m.duration_s || 60) * 1000);
+
+      const { error: updErr } = await supabaseAdmin
+        .from("matches")
+        .update({
+          status: "active",
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+        })
+        .eq("id", data.matchId);
+
+      if (updErr) throw new Error("تعذّر بدء المباراة");
+      return { matchId: data.matchId, accepted: true };
+    } else {
+      await supabaseAdmin
+        .from("matches")
+        .update({ status: "cancelled" })
+        .eq("id", data.matchId);
+      return { matchId: data.matchId, accepted: false };
+    }
+  });
+
+// Cancels an outgoing or waiting challenge.
+export const cancelChallenge = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { matchId: string }) =>
+    z.object({ matchId: z.string().uuid() }).parse(d)
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { error } = await supabaseAdmin
+      .from("matches")
+      .update({ status: "cancelled" })
+      .eq("id", data.matchId)
+      .or(`player_a.eq.${userId},player_b.eq.${userId}`)
+      .in("status", ["waiting", "invited"]);
+
+    if (error) throw new Error("تعذّر إلغاء التحدي");
+    return { cancelled: true };
+  });

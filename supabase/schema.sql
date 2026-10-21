@@ -498,7 +498,7 @@ BEGIN
   INTO m
   FROM public.matches
   WHERE (player_a = auth.uid() OR player_b = auth.uid())
-    AND status IN ('waiting', 'active', 'finishing')
+    AND status IN ('waiting', 'invited', 'active', 'finishing')
   ORDER BY created_at DESC
   LIMIT 1;
 
@@ -577,8 +577,19 @@ BEGIN
     SELECT id FROM public.questions WHERE status = 'active' ORDER BY random() LIMIT 20
   ) sub;
 
+  IF q_ids IS NULL OR array_length(q_ids, 1) < 1 THEN
+    SELECT array_agg(id) INTO q_ids FROM (
+      SELECT id FROM public.questions ORDER BY random() LIMIT 20
+    ) sub2;
+  END IF;
+
+  UPDATE public.matches
+  SET status = 'cancelled'
+  WHERE status IN ('waiting', 'invited')
+    AND (player_a = auth.uid() OR player_b = auth.uid());
+
   INSERT INTO public.matches (kind, status, player_a, player_b, a_name, b_name, duration_s, question_ids)
-  VALUES ('challenge', 'waiting', auth.uid(), _friend, my_name, friend_name, COALESCE(_duration, 60), COALESCE(q_ids, ARRAY[]::uuid[]))
+  VALUES ('challenge', 'invited', auth.uid(), _friend, my_name, friend_name, COALESCE(_duration, 60), COALESCE(q_ids, ARRAY[]::uuid[]))
   RETURNING id INTO new_id;
 
   RETURN new_id;
@@ -595,11 +606,11 @@ BEGIN
     SET status = 'active',
         starts_at = now() + interval '3 seconds',
         ends_at = now() + interval '3 seconds' + (duration_s || ' seconds')::interval
-    WHERE id = _id AND player_b = auth.uid() AND status = 'waiting';
+    WHERE id = _id AND player_b = auth.uid() AND status IN ('waiting', 'invited');
   ELSE
     UPDATE public.matches
     SET status = 'cancelled'
-    WHERE id = _id AND (player_b = auth.uid() OR player_a = auth.uid()) AND status = 'waiting';
+    WHERE id = _id AND (player_b = auth.uid() OR player_a = auth.uid()) AND status IN ('waiting', 'invited');
   END IF;
 END;
 $$;
@@ -608,7 +619,7 @@ GRANT EXECUTE ON FUNCTION public.respond_invite(uuid, boolean) TO authenticated;
 -- Cancel Match
 CREATE OR REPLACE FUNCTION public.cancel_match(_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
-  UPDATE public.matches SET status = 'cancelled' WHERE id = _id AND (player_a = auth.uid() OR player_b = auth.uid()) AND status = 'waiting';
+  UPDATE public.matches SET status = 'cancelled' WHERE id = _id AND (player_a = auth.uid() OR player_b = auth.uid()) AND status IN ('waiting', 'invited');
 $$;
 GRANT EXECUTE ON FUNCTION public.cancel_match(uuid) TO authenticated;
 

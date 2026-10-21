@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/rea
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { BottomNav } from "@/components/BottomNav";
+import { IncomingChallengeModal } from "@/components/IncomingChallengeModal";
 
 // Client-only gate: unconfirmed users never get a session, so they land on /auth.
 export const Route = createFileRoute("/_authenticated")({
@@ -44,22 +45,24 @@ function AuthenticatedLayout() {
   const invitesQuery = useQuery({
     queryKey: ["arena-invites-badge", user.id],
     queryFn: async () => {
-      const since = new Date(Date.now() - 60_000).toISOString();
+      const since = new Date(Date.now() - 65_000).toISOString();
       const { count } = await supabase
         .from("matches")
         .select("id", { count: "exact", head: true })
         .eq("player_b", user.id)
-        .eq("status", "invited")
+        .eq("kind", "challenge")
+        .in("status", ["invited", "waiting"])
         .gt("created_at", since);
       return count ?? 0;
     },
-    refetchInterval: isDistractionFree ? false : 12_000,
+    refetchInterval: isDistractionFree ? false : 3000,
     enabled: !isDistractionFree,
   });
 
   return (
     <div className={`min-h-screen ${!isDistractionFree ? "pb-20 md:pb-0" : ""}`}>
       <Outlet />
+      <IncomingChallengeModal userId={user.id} />
       {!isDistractionFree && (
         <BottomNav
           incomingFriendsCount={incomingQuery.data ?? 0}

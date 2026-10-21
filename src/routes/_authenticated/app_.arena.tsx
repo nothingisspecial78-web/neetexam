@@ -1,10 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Swords, Trophy, Coins, Radar, Crown, Users, ChevronRight, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { challengeFriend, respondChallenge, cancelChallenge } from "@/lib/arena.functions";
 import { AppHeader } from "@/components/AppHeader";
 import { ArenaMatch } from "@/components/ArenaMatch";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,9 @@ function Arena() {
   const { user } = Route.useRouteContext();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const challengeFn = useServerFn(challengeFriend);
+  const respondFn = useServerFn(respondChallenge);
+  const cancelFn = useServerFn(cancelChallenge);
   const [viewId, setViewId] = useState<string | null>(null);
   const [waitFrom, setWaitFrom] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
@@ -51,7 +56,28 @@ function Arena() {
       const { data, error } = await supabase.rpc("arena_current");
       if (error) throw error;
       const d = data as unknown as { now: string; match: Match | null };
-      return { match: d.match, offset: new Date(d.now).getTime() - (t + Date.now()) / 2 };
+      let currentMatch = d.match;
+
+      // Fallback: Also check matches table for any pending/invited challenge match
+      if (!currentMatch) {
+        const since = new Date(Date.now() - 65_000).toISOString();
+        const { data: inv } = await supabase
+          .from("matches")
+          .select("*")
+          .or(`player_a.eq.${user.id},player_b.eq.${user.id}`)
+          .in("status", ["invited", "waiting", "active"])
+          .gt("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (inv) {
+          const m = { ...inv, total: (inv.question_ids || []).length };
+          currentMatch = m as Match;
+        }
+      }
+
+      return { match: currentMatch, offset: new Date(d.now).getTime() - (t + Date.now()) / 2 };
     },
     refetchInterval: viewId ? false : 2000,
   });
@@ -161,6 +187,82 @@ function Arena() {
           ))}
         </div>
       );
+  } else if (match?.kind === "challenge" && (match.status === "invited" || match.status === "waiting")) {
+    if (match.player_a === user.id) {
+      body = (
+        <div className="animate-scale-in rounded-3xl border border-amber-500/30 bg-card p-8 text-center shadow-card">
+          <div className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center">
+            <span className="absolute inset-0 animate-ping rounded-full bg-amber-500/20" />
+            <span className="relative flex h-full w-full items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 ring-2 ring-amber-500/30">
+              <Swords className="h-9 w-9 animate-bounce" />
+            </span>
+          </div>
+          <h3 className="font-display text-2xl font-bold">بانتظار قبول {match.b_name ?? "صديقك"}…</h3>
+          <p className="mt-2 text-sm text-muted-foreground max-w-sm mx-auto">
+            أرسلنا إشعار التحدي إلى صديقك لدخول المنافسة المباشرة معاً. تنتهي الدعوة بعد دقيقة.
+          </p>
+          <Button
+            id="arena-cancel-invite-btn"
+            variant="ghost"
+            className="mt-6 h-11 rounded-xl text-muted-foreground hover:bg-muted"
+            onClick={async () => {
+              try {
+                await cancelFn({ data: { matchId: match.id } });
+                void cur.refetch();
+              } catch {
+                await call(supabase.rpc("cancel_match", { _id: match.id }));
+              }
+            }}
+          >
+            إلغاء التحدي
+          </Button>
+        </div>
+      );
+    } else {
+      body = (
+        <div className="animate-scale-in rounded-3xl border-2 border-amber-400 bg-card p-8 text-center shadow-soft dark:border-amber-600">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-500">
+            <Swords className="h-8 w-8 animate-bounce" />
+          </div>
+          <p className="font-display text-2xl font-bold">{match.a_name ?? "صديقك"} يتحدّاك في الساحة!</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            مبارزة مباشرة لمدة {match.duration_s / 60} دقيقة — أجب أسرع وأدق لتفوز!
+          </p>
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <Button
+              id="arena-accept-btn"
+              className="h-12 rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-md"
+              onClick={async () => {
+                try {
+                  await respondFn({ data: { matchId: match.id, accept: true } });
+                  void cur.refetch();
+                } catch {
+                  await call(supabase.rpc("respond_invite", { _id: match.id, _accept: true }));
+                }
+              }}
+            >
+              <Swords className="h-4 w-4" />
+              قبول التحدي
+            </Button>
+            <Button
+              id="arena-decline-btn"
+              variant="outline"
+              className="h-12 rounded-xl font-semibold"
+              onClick={async () => {
+                try {
+                  await respondFn({ data: { matchId: match.id, accept: false } });
+                  void cur.refetch();
+                } catch {
+                  await call(supabase.rpc("respond_invite", { _id: match.id, _accept: false }));
+                }
+              }}
+            >
+              رفض
+            </Button>
+          </div>
+        </div>
+      );
+    }
   } else if (match?.status === "waiting") {
     const long = now - waitFrom > WAIT_MS;
     body = (
@@ -236,7 +338,7 @@ function Arena() {
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Button
             id="arena-accept-btn"
-            className="h-12 rounded-xl font-semibold"
+            className="h-12 rounded-xl font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
             onClick={() => call(supabase.rpc("respond_invite", { _id: match.id, _accept: true }))}
           >
             <Zap className="h-4 w-4" />
@@ -308,8 +410,16 @@ function Arena() {
                   <Button
                     id={`challenge-${f.id}`}
                     size="sm"
-                    className="h-8 rounded-lg px-3 text-xs font-semibold"
-                    onClick={() => call(supabase.rpc("challenge_friend", { _friend: f.id, _duration: 60 }))}
+                    className="h-8 rounded-lg px-3 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5"
+                    onClick={async () => {
+                      try {
+                        await challengeFn({ data: { friendId: f.id, duration: 60 } });
+                        toast.success(`تم إرسال التحدي إلى ${f.display_name ?? "صديقك"}! ⚔️`);
+                        void cur.refetch();
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : "تعذّر إرسال التحدي");
+                      }
+                    }}
                   >
                     <Swords className="h-3.5 w-3.5" />
                     تحدٍّ

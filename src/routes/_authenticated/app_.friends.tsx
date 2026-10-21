@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -18,6 +19,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { challengeFriend } from "@/lib/arena.functions";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,6 +114,7 @@ function Friends() {
   const { user } = Route.useRouteContext();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const challengeFn = useServerFn(challengeFriend);
   const { data } = useSuspenseQuery(friendsOptions(user.id));
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Card[] | null>(null);
@@ -136,10 +139,13 @@ function Friends() {
   }
 
   async function challenge(id: string) {
-    const { error } = await supabase.rpc("challenge_friend", { _friend: id, _duration: 60 });
-    if (error) return void toast.error(error.message);
-    toast.success("أُرسل التحدي! جارٍ نقلك إلى الساحة…");
-    navigate({ to: "/app/arena" });
+    try {
+      await challengeFn({ data: { friendId: id, duration: 60 } });
+      toast.success("أُرسل التحدي! جارٍ نقلك إلى الساحة… ⚔️");
+      navigate({ to: "/app/arena" });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "تعذّر إرسال التحدي");
+    }
   }
 
   async function add(id: string) {
