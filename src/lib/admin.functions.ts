@@ -4,14 +4,42 @@ import { isSuperAdminEmail } from "./admin";
 import { activeCounts, dailyCounts, ONLINE_WINDOW_MS } from "./admin-stats";
 
 // Every admin call: verify the caller is the super admin (server-side), else 403.
-async function adminClient(context: { supabase: any; claims: unknown }) {
-  const { data } = await context.supabase.auth.getUser();
-  const email = data.user?.email ?? (context.claims as { email?: string }).email;
-  if (!data.user?.email_confirmed_at || !isSuperAdminEmail(email, process.env["SUPER_ADMIN_EMAIL"])) {
+async function adminClient(context: { supabase: any; claims: unknown; userId?: string }) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const claims = context.claims as { email?: string; sub?: string } | undefined;
+  let email = claims?.email;
+  let userId = context.userId ?? claims?.sub;
+  let confirmed = true;
+
+  if (userId) {
+    try {
+      const { data: uData } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (uData?.user) {
+        email = uData.user.email ?? email;
+        confirmed = !!uData.user.email_confirmed_at;
+      }
+    } catch (e) {
+      console.warn("getUserById in adminClient non-fatal:", e);
+    }
+  }
+
+  if (!email || !userId) {
+    try {
+      const { data } = await context.supabase.auth.getUser();
+      email = data?.user?.email ?? email;
+      userId = data?.user?.id ?? userId;
+      confirmed = !!data?.user?.email_confirmed_at;
+    } catch (e) {
+      console.warn("getUser in adminClient non-fatal:", e);
+    }
+  }
+
+  if (!confirmed || !isSuperAdminEmail(email, process.env["SUPER_ADMIN_EMAIL"])) {
     throw new Response("Forbidden", { status: 403 });
   }
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return { db: supabaseAdmin, adminId: data.user!.id as string };
+
+  return { db: supabaseAdmin, adminId: (userId || "admin") as string };
 }
 
 type LogFilter = { userId?: string | undefined; eventType?: string | undefined; from?: string | undefined; to?: string | undefined };
@@ -35,10 +63,15 @@ export const adminOverview = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { db } = await adminClient(context);
-    await db.rpc("prune_activity_log"); // 90-day retention
+
+    // Prune activity log in background (non-blocking)
+    void db.rpc("prune_activity_log").then(() => {}, (e: unknown) => {
+      console.warn("prune_activity_log background warning:", e);
+    });
+
     const since30 = new Date(Date.now() - 30 * 864e5).toISOString();
     const [usersRes, profilesRes, qRes, logRes, matchRes] = await Promise.all([
-      db.auth.admin.listUsers({ perPage: 1000 }),
+      db.auth.admin.listUsers({ perPage: 1000 }).catch((e) => ({ data: { users: [] }, error: e })),
       db.from("profiles").select("id, display_name, credits, last_seen_at, created_at"),
       db.from("questions").select("owner_id, status, topic_area, ai_flag, ai_suggestion, answer_source, created_at"),
       db.from("activity_log").select("user_id, created_at, event_type").gte("created_at", since30),

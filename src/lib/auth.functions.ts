@@ -6,8 +6,15 @@ import { isSuperAdminEmail } from "./admin";
 export const getMyRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data } = await context.supabase.auth.getUser();
-    const email = data.user?.email ?? (context.claims as { email?: string }).email;
+    let email = (context.claims as { email?: string } | undefined)?.email;
+    if (!email) {
+      try {
+        const { data } = await context.supabase.auth.getUser();
+        email = data?.user?.email;
+      } catch (e) {
+        console.warn("getUser in getMyRole non-fatal:", e);
+      }
+    }
     const role = isSuperAdminEmail(email, process.env['SUPER_ADMIN_EMAIL']) ? "admin" : "student";
     return { role } as const;
   });

@@ -41,6 +41,20 @@ export const Route = createFileRoute("/_authenticated/admin")({
       { name: "robots", content: "noindex" },
     ],
   }),
+  errorComponent: () => (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center bg-background" dir="rtl">
+      <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-destructive/10 text-destructive">
+        <ShieldAlert className="h-8 w-8" />
+      </div>
+      <h1 className="font-display text-2xl font-bold">حدث خطأ أثناء تحميل لوحة الإدارة</h1>
+      <p className="text-muted-foreground max-w-sm text-sm">
+        يرجى التأكد من اتصال الإنترنت وإعادة المحاولة.
+      </p>
+      <Button asChild className="rounded-xl mt-2">
+        <Link to="/app">العودة لتطبيق الطالب</Link>
+      </Button>
+    </div>
+  ),
   component: AdminPage,
 });
 
@@ -60,7 +74,7 @@ const EVENTS: Record<string, { label: string; color: string; bg: string }> = {
 
 function AdminPage() {
   const roleFn = useServerFn(getMyRole);
-  const role = useQuery({ queryKey: ["my-role"], queryFn: () => roleFn(), staleTime: Infinity });
+  const role = useQuery({ queryKey: ["my-role"], queryFn: () => roleFn(), staleTime: 60_000 });
   const qc = useQueryClient();
 
   // Instant real-time background synchronization across the entire system
@@ -95,8 +109,31 @@ function AdminPage() {
 
   if (role.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4" dir="rtl">
+        <div className="h-9 w-9 animate-spin rounded-full border-3 border-primary border-t-transparent" />
         <p className="text-sm font-semibold text-muted-foreground animate-pulse">جارٍ التحقق من صلاحيات المشرف…</p>
+      </div>
+    );
+  }
+
+  if (role.isError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center bg-background" dir="rtl">
+        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 text-amber-600">
+          <ShieldAlert className="h-8 w-8" />
+        </div>
+        <h1 className="font-display text-2xl font-bold">تعذّر التحقق من الصلاحيات</h1>
+        <p className="text-muted-foreground max-w-sm text-sm">
+          حدث خطأ أثناء الاتصال بالخادم للتحقق من صلاحيات المشرف العام.
+        </p>
+        <div className="flex items-center gap-2 mt-2">
+          <Button onClick={() => role.refetch()} className="rounded-xl">
+            إعادة المحاولة
+          </Button>
+          <Button asChild variant="outline" className="rounded-xl">
+            <Link to="/app">العودة لتطبيق الطالب</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -227,14 +264,15 @@ function Stat({
   );
 }
 
-function Bars({ data }: { data: { day: string; count: number }[] }) {
-  const max = Math.max(1, ...data.map((d) => d.count));
+function Bars({ data }: { data?: { day: string; count: number }[] }) {
+  const list = data ?? [];
+  const max = Math.max(1, ...list.map((d) => d.count));
   return (
     <div className="overflow-x-auto pb-1 scrollbar-none rounded-2xl border border-border/80 bg-card p-3 sm:p-4 shadow-xs">
       <div className="flex h-36 min-w-[320px] items-end gap-1.5 sm:gap-2">
-        {data.map((d, i) => {
+        {list.map((d, i) => {
           const heightPct = Math.max(4, Math.round((d.count / max) * 100));
-          const showLabel = data.length <= 14 || i % 2 === 0 || i === data.length - 1;
+          const showLabel = list.length <= 14 || i % 2 === 0 || i === list.length - 1;
           return (
             <div key={d.day} className="flex flex-1 flex-col items-center gap-1.5 h-full justify-end" title={`${d.day}: ${d.count}`}>
               <div
@@ -259,8 +297,8 @@ function Overview() {
   const q = useQuery({
     queryKey: ["admin-overview"],
     queryFn: () => fn(),
-    refetchInterval: 2500,
-    staleTime: 1000,
+    refetchInterval: 15_000,
+    staleTime: 5000,
     placeholderData: (prev) => prev,
   });
   const [search, setSearch] = useState("");
@@ -278,10 +316,18 @@ function Overview() {
     );
   }
   if (q.isError && !q.data) {
-    return <p className="py-12 text-center text-sm text-destructive">تعذّر تحميل بيانات لوحة الإدارة.</p>;
+    return (
+      <div className="py-12 text-center space-y-3" dir="rtl">
+        <p className="text-sm text-destructive font-medium">تعذّر تحميل بيانات لوحة الإدارة.</p>
+        <Button variant="outline" size="sm" onClick={() => q.refetch()} className="rounded-xl text-xs">
+          إعادة المحاولة
+        </Button>
+      </div>
+    );
   }
 
   const d = q.data;
+  if (!d) return null;
 
   async function toggleBan(id: string, banned: boolean) {
     try {
@@ -295,7 +341,7 @@ function Overview() {
     }
   }
 
-  const users = d.users.filter(
+  const users = (d.users ?? []).filter(
     (u) => !search || `${u.name ?? ""} ${u.email ?? ""}`.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -505,18 +551,29 @@ function LogTab() {
   const [to, setTo] = useState("");
   const [live, setLive] = useState(true);
 
+  const parseSafeIso = (val: string, endOfDay = false) => {
+    if (!val) return undefined;
+    try {
+      const d = new Date(endOfDay ? val + "T23:59:59" : val);
+      if (isNaN(d.getTime())) return undefined;
+      return d.toISOString();
+    } catch {
+      return undefined;
+    }
+  };
+
   const filter = {
     eventType: eventType || undefined,
     userId: userId || undefined,
-    from: from ? new Date(from).toISOString() : undefined,
-    to: to ? new Date(to + "T23:59:59").toISOString() : undefined,
+    from: parseSafeIso(from),
+    to: parseSafeIso(to, true),
   };
 
   const q = useQuery({
     queryKey: ["admin-log", filter],
     queryFn: () => fn({ data: filter }),
-    refetchInterval: live ? 2000 : false,
-    staleTime: 1000,
+    refetchInterval: live ? 10_000 : false,
+    staleTime: 5000,
     placeholderData: (prev) => prev,
   });
 
