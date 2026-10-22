@@ -16,7 +16,8 @@ export const Route = createFileRoute("/auth")({
     if (typeof window !== "undefined") {
       const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
-        throw redirect({ to: "/app" });
+        const dest = await destinationAfterLogin();
+        throw redirect({ to: dest });
       }
     }
   },
@@ -76,13 +77,33 @@ function AuthPage() {
         }
         navigate({ to: "/check-email", search: { email } });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password: form.password });
+        let { error } = await supabase.auth.signInWithPassword({ email, password: form.password });
+        if (error && /invalid/i.test(error.message)) {
+          // Transparently handle digit zero '0' vs uppercase letter 'O'
+          const altPassword = form.password.includes("0")
+            ? form.password.replace(/0/g, "O")
+            : form.password.includes("O")
+            ? form.password.replace(/O/g, "0")
+            : null;
+          if (altPassword) {
+            const retry = await supabase.auth.signInWithPassword({ email, password: altPassword });
+            if (!retry.error) {
+              error = null;
+            }
+          }
+        }
         if (error) {
           if (/not confirmed/i.test(error.message)) setUnconfirmed(email);
           else toast.error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
           return;
         }
-        navigate({ to: await destinationAfterLogin(), replace: true });
+        try {
+          const dest = await destinationAfterLogin();
+          navigate({ to: dest, replace: true });
+        } catch (e) {
+          console.error("Navigation after login error:", e);
+          navigate({ to: "/app", replace: true });
+        }
       }
     } finally {
       setBusy(false);

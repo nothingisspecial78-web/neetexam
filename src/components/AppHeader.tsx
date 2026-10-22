@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, BookOpen, Layers, Swords, Users, FileText } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, BookOpen, Layers, Swords, Users, FileText, ShieldCheck } from "lucide-react";
 import { SignOutButton } from "./SignOutButton";
 import { DeleteAccount } from "./DeleteAccount";
 import { usePresence } from "@/lib/presence";
@@ -8,6 +9,8 @@ export function AppHeader({ title, back }: { title?: string; back?: boolean }) {
   usePresence();
   const router = useRouterState();
   const currentPath = router.location.pathname;
+  const roleQuery = useQuery<{ role: string }>({ queryKey: ["my-role"] });
+  const isAdmin = roleQuery.data?.role === "admin";
 
   const desktopLinks = [
     { to: "/app", label: "الرئيسية", icon: BookOpen, active: currentPath === "/app" },
@@ -76,6 +79,16 @@ export function AppHeader({ title, back }: { title?: string; back?: boolean }) {
         </nav>
 
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-black shadow-xs hover:bg-amber-300 transition-all active:scale-95"
+              title="الانتقال إلى لوحة المشرف العام"
+            >
+              <ShieldCheck className="h-4 w-4 text-slate-950" />
+              <span className="hidden sm:inline">لوحة الإدارة</span>
+            </Link>
+          )}
           <DeleteAccount variant="headerButton" />
           <SignOutButton />
         </div>
