@@ -15,7 +15,8 @@ export const getMyRole = createServerFn({ method: "POST" })
         console.warn("getUser in getMyRole non-fatal:", e);
       }
     }
-    const role = isSuperAdminEmail(email, process.env['SUPER_ADMIN_EMAIL']) ? "admin" : "student";
+    const adminEmail = process.env['SUPER_ADMIN_EMAIL'] || "abdullaarimbra1027@gmail.com";
+    const role = isSuperAdminEmail(email, adminEmail) ? "admin" : "student";
     return { role } as const;
   });
 

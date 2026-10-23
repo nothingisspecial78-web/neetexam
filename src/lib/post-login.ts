@@ -21,7 +21,7 @@ export async function destinationAfterLogin(): Promise<"/admin" | "/app"> {
   try {
     const { data } = await supabase.auth.getSession();
     const email = data.session?.user?.email;
-    const adminEmail = (import.meta as any).env?.VITE_SUPER_ADMIN_EMAIL || "abdullaarimbra1027@gmail.com,nothingisspecial78@gmail.com,abdullaarimbra786@gmail.com";
+    const adminEmail = (import.meta as any).env?.VITE_SUPER_ADMIN_EMAIL || "abdullaarimbra1027@gmail.com";
     if (isSuperAdminEmail(email, adminEmail)) {
       return "/admin";
     }

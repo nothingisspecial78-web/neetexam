@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/admin")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "لوحة الإدارة والمراقبة — مِدْرَاس" },
@@ -41,18 +42,23 @@ export const Route = createFileRoute("/_authenticated/admin")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  errorComponent: () => (
+  errorComponent: ({ error, reset }: { error: unknown; reset: () => void }) => (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center bg-background" dir="rtl">
       <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-destructive/10 text-destructive">
         <ShieldAlert className="h-8 w-8" />
       </div>
       <h1 className="font-display text-2xl font-bold">حدث خطأ أثناء تحميل لوحة الإدارة</h1>
       <p className="text-muted-foreground max-w-sm text-sm">
-        يرجى التأكد من اتصال الإنترنت وإعادة المحاولة.
+        {error instanceof Error ? error.message : "يرجى التأكد من اتصال الإنترنت وإعادة المحاولة."}
       </p>
-      <Button asChild className="rounded-xl mt-2">
-        <Link to="/app">العودة لتطبيق الطالب</Link>
-      </Button>
+      <div className="flex items-center gap-2 mt-2">
+        <Button onClick={reset} className="rounded-xl">
+          إعادة المحاولة
+        </Button>
+        <Button asChild variant="outline" className="rounded-xl">
+          <Link to="/app">العودة لتطبيق الطالب</Link>
+        </Button>
+      </div>
     </div>
   ),
   component: AdminPage,
@@ -341,9 +347,24 @@ function Overview() {
     }
   }
 
-  const users = (d.users ?? []).filter(
+  const rawUsers = Array.isArray(d.users) ? d.users : [];
+  const users = rawUsers.filter(
     (u) => !search || `${u.name ?? ""} ${u.email ?? ""}`.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const onlineNow = typeof d.onlineNow === "number" ? d.onlineNow : 0;
+  const activity = d.activity || { today: 0, week: 0, month: 0 };
+  const dau = Array.isArray(d.dau) ? d.dau : [];
+  const arena = d.arena || { played: 0, avgCredits: 0, suspicious: 0 };
+  const questions = d.questions || {
+    total: 0,
+    active: 0,
+    draft: 0,
+    flaggedFixed: 0,
+    uploadsPerDay: [],
+    byTopic: [],
+    topUploaders: [],
+  };
 
   return (
     <>
@@ -352,20 +373,20 @@ function Overview() {
         <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
           <Stat
             label="متصل الآن"
-            value={d.onlineNow}
+            value={onlineNow}
             sub="طلاب نشطون حاليًا"
-            highlight={d.onlineNow > 0}
+            highlight={onlineNow > 0}
           />
-          <Stat label="نشط اليوم" value={d.activity.today} />
-          <Stat label="نشط آخر 7 أيام" value={d.activity.week} />
-          <Stat label="نشط آخر 30 يومًا" value={d.activity.month} />
+          <Stat label="نشط اليوم" value={activity.today ?? 0} />
+          <Stat label="نشط آخر 7 أيام" value={activity.week ?? 0} />
+          <Stat label="نشط آخر 30 يومًا" value={activity.month ?? 0} />
         </div>
 
         <section className="space-y-2.5">
           <h3 className="font-display text-base sm:text-lg font-bold text-foreground">
             المستخدمون النشطون يوميًا (DAU)
           </h3>
-          <Bars data={d.dau} />
+          <Bars data={dau} />
         </section>
 
         <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
@@ -373,10 +394,10 @@ function Overview() {
           <section className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs space-y-3">
             <h3 className="font-display font-bold text-sm sm:text-base text-foreground flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              المتصلون الآن ({d.onlineNow})
+              المتصلون الآن ({onlineNow})
             </h3>
             <div className="divide-y divide-border/60 max-h-56 overflow-y-auto pe-1">
-              {d.users
+              {rawUsers
                 .filter((u) => u.online)
                 .map((u) => (
                   <div key={u.id} className="py-2.5 flex items-center justify-between text-xs gap-2">
@@ -389,7 +410,7 @@ function Overview() {
                     </span>
                   </div>
                 ))}
-              {d.onlineNow === 0 && (
+              {onlineNow === 0 && (
                 <p className="py-6 text-center text-xs text-muted-foreground">لا يوجد مستخدمون متصلون الآن.</p>
               )}
             </div>
@@ -403,15 +424,15 @@ function Overview() {
             </h3>
             <div className="grid grid-cols-3 gap-2 py-1">
               <div className="rounded-xl bg-muted/40 p-2.5 sm:p-3 text-center">
-                <p className="text-lg sm:text-xl font-bold font-display text-foreground tabular-nums">{d.arena.played}</p>
+                <p className="text-lg sm:text-xl font-bold font-display text-foreground tabular-nums">{arena.played ?? 0}</p>
                 <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5">مباراة لُعبت</p>
               </div>
               <div className="rounded-xl bg-muted/40 p-2.5 sm:p-3 text-center">
-                <p className="text-lg sm:text-xl font-bold font-display text-primary tabular-nums">{d.arena.avgCredits}</p>
+                <p className="text-lg sm:text-xl font-bold font-display text-primary tabular-nums">{arena.avgCredits ?? 0}</p>
                 <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5">متوسط الرصيد</p>
               </div>
               <div className="rounded-xl bg-muted/40 p-2.5 sm:p-3 text-center">
-                <p className="text-lg sm:text-xl font-bold font-display text-destructive tabular-nums">{d.arena.suspicious}</p>
+                <p className="text-lg sm:text-xl font-bold font-display text-destructive tabular-nums">{arena.suspicious ?? 0}</p>
                 <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5">حالات مشبوهة</p>
               </div>
             </div>
@@ -422,30 +443,30 @@ function Overview() {
       {/* ── Questions Tab ── */}
       <TabsContent value="questions" className="space-y-5 mt-4 focus-visible:outline-none">
         <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-4">
-          <Stat label="إجمالي الأسئلة" value={d.questions.total} highlight />
-          <Stat label="أسئلة منشورة" value={d.questions.active} />
-          <Stat label="مسودات قيد المراجعة" value={d.questions.draft} />
-          <Stat label="صُحّحت بعد تنبيه الذكاء" value={d.questions.flaggedFixed} />
+          <Stat label="إجمالي الأسئلة" value={questions.total ?? 0} highlight />
+          <Stat label="أسئلة منشورة" value={questions.active ?? 0} />
+          <Stat label="مسودات قيد المراجعة" value={questions.draft ?? 0} />
+          <Stat label="صُحّحت بعد تنبيه الذكاء" value={questions.flaggedFixed ?? 0} />
         </div>
 
         <section className="space-y-2.5">
           <h3 className="font-display text-base sm:text-lg font-bold text-foreground">
             معدل رفع الأسئلة اليومي
           </h3>
-          <Bars data={d.questions.uploadsPerDay} />
+          <Bars data={questions.uploadsPerDay ?? []} />
         </section>
 
         <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs">
             <h3 className="font-bold text-sm mb-3">توزيع الأسئلة حسب الموضوع</h3>
             <div className="space-y-2 max-h-56 overflow-y-auto pe-1">
-              {d.questions.byTopic.map(([t, n]) => (
+              {(questions.byTopic ?? []).map(([t, n]) => (
                 <div key={t} className="flex justify-between items-center text-xs py-1.5 border-b border-border/40">
                   <span className="font-medium text-foreground truncate max-w-[200px]">{t}</span>
                   <span className="font-bold font-mono text-primary shrink-0">{n}</span>
                 </div>
               ))}
-              {d.questions.byTopic.length === 0 && (
+              {(!questions.byTopic || questions.byTopic.length === 0) && (
                 <p className="py-6 text-center text-xs text-muted-foreground">لا توجد أسئلة مسجلة حاليًا.</p>
               )}
             </div>
@@ -454,13 +475,13 @@ function Overview() {
           <div className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs">
             <h3 className="font-bold text-sm mb-3">أكثر الطلاب رفعًا للأسئلة</h3>
             <div className="space-y-2 max-h-56 overflow-y-auto pe-1">
-              {d.questions.topUploaders.map(([t, n]) => (
+              {(questions.topUploaders ?? []).map(([t, n]) => (
                 <div key={t} className="flex justify-between items-center text-xs py-1.5 border-b border-border/40">
                   <span className="font-medium text-foreground truncate max-w-[200px]">{t}</span>
                   <span className="font-bold font-mono text-primary shrink-0">{n} سؤال</span>
                 </div>
               ))}
-              {d.questions.topUploaders.length === 0 && (
+              {(!questions.topUploaders || questions.topUploaders.length === 0) && (
                 <p className="py-6 text-center text-xs text-muted-foreground">لا توجد بيانات رفع حاليًا.</p>
               )}
             </div>
@@ -577,14 +598,14 @@ function LogTab() {
     placeholderData: (prev) => prev,
   });
 
-  const users = ov.data?.users ?? [];
+  const users = Array.isArray(ov.data?.users) ? ov.data.users : [];
   const who = (id: string | null) => {
     const u = users.find((x) => x.id === id);
     return u ? `${u.name || "مستخدم"} (${u.email || ""})` : id?.slice(0, 8) ?? "—";
   };
 
-  const rows = (q.data ?? []).map((r) => ({
-    time: new Date(r.created_at).toLocaleString("ar"),
+  const rows = (Array.isArray(q.data) ? q.data : []).map((r) => ({
+    time: r.created_at ? new Date(r.created_at).toLocaleString("ar") : "—",
     user: who(r.user_id),
     rawEvent: r.event_type,
     eventMeta: EVENTS[r.event_type] ?? {

@@ -34,6 +34,7 @@ import { FeatureTile } from "@/components/dark-theme/FeatureTile";
 import { StatCard } from "@/components/dark-theme/StatCard";
 
 export const Route = createFileRoute("/_authenticated/app")({
+  ssr: false,
   validateSearch: (search: Partial<Filters> & SearchSchemaInput): Filters => ({
     range: search.range === "7" || search.range === "all" ? search.range : "30",
     unit: typeof search.unit === "string" ? search.unit : "all",
@@ -240,10 +241,6 @@ function StudentHome() {
         (u.owner_name && u.owner_name.toLowerCase().includes(query))
     );
   }, [searchQuery, unitsQuery.data?.stats]);
-
-  useEffect(() => {
-    if (role.data?.role === "admin") navigate({ to: "/admin", replace: true });
-  }, [role.data, navigate]);
 
   const [name, setName] = useState("");
   useEffect(() => {

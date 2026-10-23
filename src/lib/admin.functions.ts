@@ -35,7 +35,8 @@ async function adminClient(context: { supabase: any; claims: unknown; userId?: s
     }
   }
 
-  if (!confirmed || !isSuperAdminEmail(email, process.env["SUPER_ADMIN_EMAIL"])) {
+  const adminEmail = process.env["SUPER_ADMIN_EMAIL"] || "abdullaarimbra1027@gmail.com";
+  if (!confirmed || !isSuperAdminEmail(email, adminEmail)) {
     throw new Response("Forbidden", { status: 403 });
   }
 
